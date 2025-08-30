@@ -9,6 +9,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
+    program::invoke,
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
@@ -20,9 +21,9 @@ use spl_name_service::state::{NameRecordHeader};
 use spl_token::instruction::transfer;
 
 use crate::{
-    central_state, constants::WEB3_NAME_SERVICE, cpi::Cpi, utils::{
-        check_vault_token_account_owner, get_hashed_name, get_seeds_and_key
-    }
+    central_state, constants::{FWC_MINT, WEB3_NAME_SERVICE}, cpi::Cpi, utils::{
+        check_vault_token_account_owner, get_domain_price, get_hashed_name, get_seeds_and_key
+    }, Error
 };
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
@@ -70,8 +71,9 @@ pub struct Accounts<'a, T> {
     pub spl_token_program: &'a T,
     /// The rent sysvar account
     pub rent_sysvar: &'a T,
-    /// The state auction account
-    pub state: &'a T,
+    // /// The state auction account
+    // pub state: &'a T,
+
     /// The *optional* referrer token account to receive a portion of fees.
     /// The token account owner has to be whitelisted.
     #[cons(writable)]
@@ -99,14 +101,13 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             vault: next_account_info(accounts_iter)?,
             spl_token_program: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
-            state: next_account_info(accounts_iter)?,
+            // state: next_account_info(accounts_iter)?,
             referrer_account_opt: next_account_info(accounts_iter).ok(),
         })
     }
 
     pub fn check(&self) -> Result<(), ProgramError> {
 
-        // Check keys
         check_account_key(self.naming_service_program, &WEB3_NAME_SERVICE).unwrap();
         msg!("nameservice id ok");
         check_account_key(self.system_program, &system_program::ID).unwrap();
@@ -122,9 +123,6 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         check_account_owner(self.name, &system_program::ID)
             .map_err(|_| crate::Error::AlreadyRegistered)?;
         msg!("rent_sysvar owner ok");
-
-        // check_account_owner(self.vault, &spl_token::ID).unwrap();
-        //check_account_owner(self.state, &system_program::ID).unwrap();
 
         check_account_owner(self.root_domain, &WEB3_NAME_SERVICE)?;
         msg!("root_domain owner ok");
@@ -153,19 +151,20 @@ pub fn create<'a, 'b: 'a>(
     accounts: Accounts<'a, AccountInfo<'b>>,
     params: Params,
 ) -> ProgramResult {
-    //check the accouts
+    
     accounts.check()?;
     check_vault_token_account_owner(accounts.vault).unwrap();
-    //check domain name to ensure it has correct format
+    
     if params.name != params.name.trim().to_lowercase() {
         msg!("Domain names must be lower case and have no space");
         return Err(ProgramError::InvalidArgument);
     }
-    //without "."
+    
     if params.name.contains('.') {
         return Err(ProgramError::InvalidArgument);
     }
 
+    #[cfg(feature = "devnet")]
     msg!("root: {}", accounts.root_domain.key);
     msg!("name: {}", params.name);
 
@@ -197,7 +196,40 @@ pub fn create<'a, 'b: 'a>(
         return Err(ProgramError::InvalidArgument);
     }
 
+    //auction state
+
     let central_state_signer_seeds: &[&[u8]] = &[&program_id.to_bytes(), &[central_state::NONCE]];
+
+    let mut domain_token_price = get_domain_price(&params.name, &accounts)?;
+
+    let token_acc = spl_token::state::Account::unpack(&accounts.buyer_token_source.data.borrow())?;
+    if token_acc.mint == FWC_MINT {
+        domain_token_price = domain_token_price.checked_mul(95).ok_or(Error::Overflow)? / 100;
+    }
+
+    //sns -- transfer coins to referrer
+
+    //
+
+    //transfer domain's price
+    let transfer_ix = transfer(
+        &spl_token::ID,
+        accounts.buyer_token_source.key,
+        accounts.vault.key,
+        accounts.buyer.key,
+        &[],
+        domain_token_price,
+    )?;
+
+    invoke(
+        &transfer_ix,
+        &[
+            accounts.spl_token_program.clone(),
+            accounts.buyer_token_source.clone(),
+            accounts.vault.clone(),
+            accounts.buyer.clone(),
+        ],
+    )?;
 
     let rent = Rent::get()?;
     let hashed_name = get_hashed_name(&params.name);

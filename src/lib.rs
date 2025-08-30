@@ -14,7 +14,7 @@ pub use error::Error;
 declare_id_with_central_state!("jCebN34bUfdeUYJT13J1yG16XWQpt5PDx6Mse9GUqhR");
 
 #[cfg(feature = "devnet")]
-declare_id_with_central_state!("ESEodAFMvihH9x237DmsAb9zzAcTnWfUB6R1xB7w5XG3");
+declare_id_with_central_state!("8Uf9neUyY6C7aJPBCJLcnski8Pv5dFSA6LBgFvsBgAnY");
 
 #[cfg(not(feature = "devnet"))]
 pub mod constants {
@@ -125,13 +125,10 @@ pub mod constants {
         "FWC" => (pubkey!("DL4ivZm3NVHWk9ZvtcqTchxoKArDK4rT3vbDx2gYVr7P"), 8),
     };
 
+    pub const FWC_MINT: Pubkey = pubkey!("FLEYqPkSSUoZXywYaKoN7eRPDFWDM6THLz2kuW9zKwHE");
+
 
     
-
-
-
-
-
 
     // Unused
     pub const PYTH_MAPPING_ACCOUNT: Pubkey =
