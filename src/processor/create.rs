@@ -219,7 +219,7 @@ pub fn create<'a, 'b: 'a>(
         accounts.buyer.key,
         &[],
         domain_token_price,
-    )?;
+    ).unwrap();
 
     invoke(
         &transfer_ix,
@@ -229,7 +229,7 @@ pub fn create<'a, 'b: 'a>(
             accounts.vault.clone(),
             accounts.buyer.clone(),
         ],
-    )?;
+    ).unwrap();
 
     let rent = Rent::get()?;
     let hashed_name = get_hashed_name(&params.name);

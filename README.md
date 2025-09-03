@@ -2,7 +2,8 @@
 
 
 ## deploy
-solana program deploy --program-id target/deploy/auction-keypair.json target/sbf-solana-solana/release/auction.so  --use-rpc
+solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.json target/sbf-so
+lana-solana/release/web3_domain_registrar.so  --use-rpc
 
 ## bulid
 cargo build-sbf

@@ -6162,9 +6162,9 @@ dependencies = [
 
 [[package]]
 name = "web3-name-service-utils"
-version = "0.0.2"
+version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b392109627f4106eb15bd333ed52a996c7f9ddb4d68a4f78cd602e67e5d3b87"
+checksum = "e48a55d57390fc53a4b0d4a0a4cfa304169454cf1f92ef4c2927a14e54444d89"
 dependencies = [
  "bonfida-macros",
  "borsh 0.10.3",

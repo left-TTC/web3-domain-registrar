@@ -152,7 +152,7 @@ pub fn get_domain_price_check(
         token.decimals(),
         6,
         &Clock::get().unwrap(),
-        60,
+        6000,
     )?;
     Ok(token_price)
 }

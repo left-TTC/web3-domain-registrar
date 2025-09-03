@@ -14,7 +14,7 @@ pub use error::Error;
 declare_id_with_central_state!("jCebN34bUfdeUYJT13J1yG16XWQpt5PDx6Mse9GUqhR");
 
 #[cfg(feature = "devnet")]
-declare_id_with_central_state!("8Uf9neUyY6C7aJPBCJLcnski8Pv5dFSA6LBgFvsBgAnY");
+declare_id_with_central_state!("Hyk2fr7w4Tyf19jKFUCW35aDBkCkcBbadEU12RDdbDKx");
 
 #[cfg(not(feature = "devnet"))]
 pub mod constants {
@@ -114,8 +114,8 @@ pub mod constants {
     pub const WEB3_NAME_SERVICE: Pubkey = pubkey!("DqynrcXcYhfJbUYQZZFq6A2Tx64cJQGwyufWJxLpnKsK");
 
     //all the income storage in auction program
-    pub const VAULT_OWNER: Pubkey = pubkey!("9qQuHLMAJEehtk47nKbY1cMAL1bVD7nQxno4SJRDth7");
-    pub const WEN3_AUCTION_ID: Pubkey = pubkey!("9qQuHLMAJEehtk47nKbY1cMAL1bVD7nQxno4SJRDth7");
+    pub const VAULT_OWNER: Pubkey = pubkey!("DWNSuxCniY8m11DazRoN3VqvDZK8Sps2wgoQHWx3t4Sx");
+    pub const WEN3_AUCTION_ID: Pubkey = pubkey!("7o1pWHkCzGzQz63pUWTzMYBirNF95ShfiPBeYYXU3nEc");
 
     pub static TOKENS_SYM_MINT_DECIMALS: phf::Map<&'static str, (Pubkey, u8)> = phf_map! {
         "USDC" => (pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"),6),
