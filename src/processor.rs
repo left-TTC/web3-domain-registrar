@@ -8,9 +8,11 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-pub mod create;
-pub mod create_reverse;
-pub mod delete;
+pub mod start_name; 
+pub mod create_name;
+pub mod create_root;
+pub mod initiate_root;
+
 pub struct Processor {}
 
 impl Processor {
@@ -31,24 +33,11 @@ impl Processor {
         match instruction {
             ProgramInstruction::Create => {
                 msg!("Instruction: Create web3 domain");
-                let params = create::Params::try_from_slice(instruction_data)
+                let params = start_name::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidInstructionData)?;
-                create::process_create(program_id, accounts, params)?;
+                start_name::process_create(program_id, accounts, params)?;
             }
 
-            ProgramInstruction::CreateReverse => {
-                msg!("Instruction: Create web3 domain Reverse account");
-                let params = create_reverse::Params::try_from_slice(instruction_data)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?;
-                create_reverse::process_create_reverse(program_id, accounts, params)?;
-            }
-
-            ProgramInstruction::Delete => {
-                msg!("Instruction: Delete web3 domain");
-                let params = delete::Params::try_from_slice(instruction_data)
-                    .map_err(|_| ProgramError::InvalidInstructionData)?;
-                delete::process_delete(program_id, accounts, params)?
-            }
             _ => {
                 msg!("Instruction: Deprecated");
                 return Err(ProgramError::InvalidInstructionData);

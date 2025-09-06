@@ -1,0 +1,179 @@
+
+use web3_name_service_utils::checks::check_account_owner;
+use solana_program::{
+    msg,
+    program::{invoke, invoke_signed},
+    rent::Rent,
+    sysvar::Sysvar,
+};
+use crate::{
+    central_state, constants::WEB3_NAME_SERVICE, utils::{get_hashed_name, get_seeds_and_key, get_sol_price, ADVANCED_STORAGE}
+};
+
+use crate::state::RootStateRecordHeader;
+
+use {
+    web3_name_service_utils::{
+        checks::{check_account_key, check_signer},
+        BorshSize, InstructionsAccount,
+    },
+    borsh::{BorshDeserialize, BorshSerialize},
+    // sns_sdk::record::Record,
+    solana_program::{
+        account_info::{next_account_info, AccountInfo},
+        entrypoint::ProgramResult,
+        program_error::ProgramError,
+        program_pack::Pack,
+        pubkey::Pubkey,
+        system_instruction,
+        system_program,
+        sysvar,
+    },
+};
+
+
+
+#[derive(BorshDeserialize, BorshSerialize, BorshSize)]
+pub struct Params {
+    pub root_name: String,
+}
+
+#[derive(InstructionsAccount)]
+pub struct Accounts<'a, T> {
+    /// The system program account
+    pub system_program: &'a T,
+    /// The fee payer account
+    #[cons(writable, signer)]
+    pub initiator: &'a T,
+    #[cons(writable)]
+    pub root_state_account: &'a T,
+    /// root domain name account
+    pub root_name_account: &'a T,
+    /// The vault account     
+    #[cons(writable)]
+    pub vault: &'a T,
+    /// The rent sysvar account
+    pub rent_sysvar: &'a T,
+    /// The Pyth feed account
+    pub pyth_feed_account: &'a T,
+}
+
+impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
+    pub fn parse(accounts: &'a [AccountInfo<'b>]) -> Result<Self, ProgramError> {
+        let accounts_iter = &mut accounts.iter();
+        let accounts = Accounts {
+            system_program: next_account_info(accounts_iter)?,
+            initiator: next_account_info(accounts_iter)?,
+            root_state_account: next_account_info(accounts_iter)?,
+            root_name_account: next_account_info(accounts_iter)?,
+            vault: next_account_info(accounts_iter)?,
+            rent_sysvar: next_account_info(accounts_iter)?,
+            pyth_feed_account: next_account_info(accounts_iter)?,
+        };
+
+        // Check keys
+        check_account_key(accounts.system_program, &system_program::ID)?;
+        check_account_key(accounts.rent_sysvar, &sysvar::rent::ID)?;
+
+        // Check owners
+        check_account_owner(accounts.root_state_account, &system_program::ID)?;
+
+        // Check signer
+        check_signer(accounts.initiator)?;
+
+        Ok(accounts)
+    }
+}
+
+pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], params: Params) -> ProgramResult {
+    let accounts = Accounts::parse(accounts)?;
+
+    let (root_state_key, seeds) = get_seeds_and_key(
+        &crate::ID, 
+        get_hashed_name(&params.root_name), 
+        None, 
+        None
+    );
+
+    let root_state_account = accounts.root_state_account;
+    if root_state_key != *root_state_account.key {
+        msg!("The given root state account is incorrect.");
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    let (root_name_account, _) = get_seeds_and_key(
+        &WEB3_NAME_SERVICE, 
+        get_hashed_name(&params.root_name), 
+        None, 
+        None,
+    );
+    check_account_key(accounts.root_name_account, &root_name_account)?;
+
+    let (vault, _) = get_seeds_and_key(
+        &crate::ID, 
+        get_hashed_name("vault"), 
+        Some(&central_state::KEY), 
+        Some(&central_state::KEY)
+    );
+    check_account_key(accounts.vault, &vault)?;
+    msg!("check vault ok");
+
+    if root_state_account.data.borrow().len() > 0 {
+        let root_record_header = 
+            RootStateRecordHeader::unpack_from_slice(&root_state_account.data.borrow())?;
+        if root_record_header.initiator != Pubkey::default() {
+            msg!("The given root account already created");
+            return Err(ProgramError::InvalidArgument);
+        }
+    }
+
+    if root_state_account.data.borrow().len() == 0 {
+
+        let rent = Rent::from_account_info(accounts.rent_sysvar)?;
+        let root_state_lamports = rent.minimum_balance(RootStateRecordHeader::LEN);
+        let extra_lamports = 
+            get_sol_price(accounts.pyth_feed_account, ADVANCED_STORAGE)?;
+
+        invoke(
+        &system_instruction::transfer(
+            accounts.initiator.key, &root_state_key, root_state_lamports), 
+            &[
+                accounts.initiator.clone(),
+                accounts.root_state_account.clone(),
+                accounts.system_program.clone(),
+            ],
+        )?;
+
+        invoke_signed(
+            &system_instruction::allocate(
+                &root_state_key, 
+                RootStateRecordHeader::LEN as u64
+            ), 
+            &[accounts.root_state_account.clone(), accounts.system_program.clone()], 
+            &[&seeds.chunks(32).collect::<Vec<&[u8]>>()],
+        )?;
+
+        invoke_signed(
+            &system_instruction::assign(&root_state_key, &crate::ID),
+            &[accounts.root_state_account.clone(), accounts.system_program.clone()],
+            &[&seeds.chunks(32).collect::<Vec<&[u8]>>()],
+        )?;
+
+        invoke(
+        &system_instruction::transfer(
+            accounts.initiator.key, accounts.vault.key, extra_lamports), 
+            &[
+                accounts.initiator.clone(),
+                accounts.root_state_account.clone(),
+                accounts.system_program.clone(),
+            ],
+        )?;
+    }
+    
+    let init_state: RootStateRecordHeader = 
+        RootStateRecordHeader::new(*accounts.initiator.key, ADVANCED_STORAGE, &params.root_name);
+    
+    init_state.pack_into_slice(&mut accounts.root_state_account.data.borrow_mut());
+
+    Ok(())
+}

@@ -17,14 +17,9 @@ use solana_program::{
     system_program, sysvar,
     sysvar::Sysvar,
 };
-use spl_name_service::state::{NameRecordHeader};
+use web3_domain_name_service::state::{NameRecordHeader};
 use spl_token::instruction::transfer;
 
-use crate::{
-    central_state, constants::{FWC_MINT, WEB3_NAME_SERVICE}, cpi::Cpi, utils::{
-        check_vault_token_account_owner, get_domain_price, get_hashed_name, get_seeds_and_key
-    }, Error
-};
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
@@ -71,13 +66,13 @@ pub struct Accounts<'a, T> {
     pub spl_token_program: &'a T,
     /// The rent sysvar account
     pub rent_sysvar: &'a T,
-    // /// The state auction account
-    // pub state: &'a T,
+    /// The state auction account
+    pub state: &'a T,
 
     /// The *optional* referrer token account to receive a portion of fees.
     /// The token account owner has to be whitelisted.
     #[cons(writable)]
-    pub referrer_account_opt: Option<&'a T>,
+    pub referrer_account_opt: &'a T,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
