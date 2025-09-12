@@ -1,5 +1,12 @@
 
+use super::Cpi;
 
+use solana_program::{
+    account_info::AccountInfo, 
+    entrypoint::ProgramResult, 
+    program::invoke_signed,
+};
+use web3_domain_name_service::{instruction::NameRegistryInstruction};
 
 impl Cpi {
 
@@ -14,7 +21,7 @@ impl Cpi {
         lamports: u64,
         signer_seeds: &Vec<u8>,
     ) -> ProgramResult {
-        let create_name_instruction = web3-domain-name-service::instruction::create(
+        let create_name_instruction = web3_domain_name_service::instruction::create(
             *name_service_program.key,
             NameRegistryInstruction::Create {
                 hashed_name,

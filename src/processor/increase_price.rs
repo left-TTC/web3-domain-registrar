@@ -1,7 +1,7 @@
 //! Create a domain name and buy the ownership of a domain name
 
-use web3_name_service_utils::{
-    checks::{check_account_key, check_account_owner, check_signer},
+use web3_utils::{
+    check::{check_account_key, check_account_owner, check_signer},
     BorshSize, InstructionsAccount,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -18,7 +18,8 @@ use solana_program::{
     sysvar::Sysvar,
 };
 use web3_domain_name_service::state::{NameRecordHeader};
-use spl_token::instruction::transfer;
+
+use crate::constants::WEB3_NAME_SERVICE;
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
@@ -42,37 +43,30 @@ pub struct Accounts<'a, T> {
     /// The reverse look up account   
     #[cons(writable)]
     pub reverse_lookup: &'a T,
+    /// The domain auction state account
+    #[cons(writable)]
+    pub domain_state_account: &'a T,
     /// The system program account
     pub system_program: &'a T,
     /// The central state account
     pub central_state: &'a T,
-    /// The buyer account     
-    #[cons(writable, signer)]
-    pub buyer: &'a T,
-    /// The registered domain owner     
-    pub domain_owner: &'a T,
-    /// The solana fee payer account     
+    /// The buyer account         
     #[cons(writable, signer)]
     pub fee_payer: &'a T,
-    /// The buyer token account       
-    #[cons(writable)]
-    pub buyer_token_source: &'a T,
     /// The Pyth feed account
     pub pyth_feed_account: &'a T,
     /// The vault account     
     #[cons(writable)]
     pub vault: &'a T,
-    /// The SPL token program
-    pub spl_token_program: &'a T,
     /// The rent sysvar account
     pub rent_sysvar: &'a T,
-    /// The state auction account
-    pub state: &'a T,
-
-    /// The *optional* referrer token account to receive a portion of fees.
-    /// The token account owner has to be whitelisted.
+    /// the referrer -- must be unique
+    /// one question: if usr want to get the profile from his next level
+    /// he or she must keep the info is correspond
     #[cons(writable)]
-    pub referrer_account_opt: &'a T,
+    pub referrer_account: &'a T,
+    #[cons(writable)]
+    pub referrer_record_account: &'a T,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -86,18 +80,18 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             root_domain: next_account_info(accounts_iter)?,
             name: next_account_info(accounts_iter)?,
             reverse_lookup: next_account_info(accounts_iter)?,
+            domain_state_account: next_account_info(accounts_iter)?,
             system_program: next_account_info(accounts_iter)?,
             central_state: next_account_info(accounts_iter)?,
-            buyer: next_account_info(accounts_iter)?,
-            domain_owner: next_account_info(accounts_iter)?,
             fee_payer: next_account_info(accounts_iter)?,
-            buyer_token_source: next_account_info(accounts_iter)?,
             pyth_feed_account: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
-            spl_token_program: next_account_info(accounts_iter)?,
+            pyth_feed_account: next_account_info(accounts_iter)?,
+            vault: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
+            referrer_account: next_account_info(accounts_iter)?,
             // state: next_account_info(accounts_iter)?,
-            referrer_account_opt: next_account_info(accounts_iter).ok(),
+            referrer_record_account: next_account_info(accounts_iter).ok(),
         })
     }
 
@@ -109,28 +103,24 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         msg!("system_program id ok");
         check_account_key(self.central_state, &central_state::KEY).unwrap();
         msg!("central_state id ok");
-        check_account_key(self.spl_token_program, &spl_token::ID).unwrap();
-        msg!("spl_token_program id ok");
         check_account_key(self.rent_sysvar, &sysvar::rent::ID).unwrap();
         msg!("rent_sysvar id ok");
 
         // Check ownership
         check_account_owner(self.name, &system_program::ID)
             .map_err(|_| crate::Error::AlreadyRegistered)?;
-        msg!("rent_sysvar owner ok");
-
         check_account_owner(self.root_domain, &WEB3_NAME_SERVICE)?;
-        msg!("root_domain owner ok");
+        check_account_owner(self.domain_state_account, &crate::ID)
+            .map_err(|_| crate::Error::AlreadyRegistered)?;
 
-        // Check signer
-        check_signer(self.buyer).unwrap();
-        msg!("buyer signature ok");
         check_signer(self.fee_payer).unwrap();
         msg!("fee_payer signature ok");
 
         Ok(())
     }
 }
+
+
 
 pub fn process_create(
     program_id: &Pubkey,
@@ -148,7 +138,6 @@ pub fn create<'a, 'b: 'a>(
 ) -> ProgramResult {
     
     accounts.check()?;
-    check_vault_token_account_owner(accounts.vault).unwrap();
     
     if params.name != params.name.trim().to_lowercase() {
         msg!("Domain names must be lower case and have no space");

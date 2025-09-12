@@ -1,5 +1,4 @@
 use crate::processor::{start_name};
-use web3_name_service_utils::InstructionsAccount;
 use borsh::{BorshDeserialize, BorshSerialize};
 use num_derive::FromPrimitive;
 use solana_program::{instruction::Instruction, pubkey::Pubkey};
@@ -7,8 +6,10 @@ use solana_program::{instruction::Instruction, pubkey::Pubkey};
 
 
 pub enum ProgramInstruction {
-    Create,
-    CreateReverse,
-    Delete,
+    InitiateRoot,
+    CreateRoot,
+    StartName,
+    IncreasePrice,
+    CreateName,
 }
 

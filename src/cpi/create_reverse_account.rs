@@ -1,5 +1,13 @@
 
+use crate::state::ReverseLookup;
 
+use super::Cpi;
+
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, program::invoke_signed, program_pack::Pack, rent::Rent, sysvar::Sysvar
+};
+use borsh::BorshSerialize;
+use web3_domain_name_service::{instruction::NameRegistryInstruction, state::NameRecordHeader};
 
 impl Cpi {
 
@@ -21,7 +29,7 @@ impl Cpi {
         let rent = Rent::from_account_info(rent_sysvar_account)?;
         let lamports = rent.minimum_balance(name_bytes.len() + NameRecordHeader::LEN);
 
-        let create_name_instruction = web3-domain-name-service::instruction::create(
+        let create_name_instruction = web3_domain_name_service::instruction::create(
             *name_service_program.key,
             NameRegistryInstruction::Create {
                 hashed_name: hashed_reverse_lookup,
@@ -59,7 +67,7 @@ impl Cpi {
 
         invoke_signed(&create_name_instruction, &accounts_create, &[signer_seeds])?;
 
-        let write_name_instruction = web3-domain-name-service::instruction::update(
+        let write_name_instruction = web3_domain_name_service::instruction::update(
             *name_service_program.key,
             0,
             name_bytes,

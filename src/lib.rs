@@ -1,4 +1,4 @@
-use web3_name_service_utils::declare_id_with_central_state;
+use web3_utils::declare_id_with_central_state;
 
 
 pub mod entrypoint;

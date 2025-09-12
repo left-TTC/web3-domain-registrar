@@ -1,6 +1,12 @@
 
 use super::Cpi;
 
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult, program::invoke_signed,
+};
+use web3_domain_name_service::instruction::NameRegistryInstruction;
+
 impl Cpi {
 
     #[allow(clippy::too_many_arguments)]
