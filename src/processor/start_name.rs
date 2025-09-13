@@ -1,8 +1,10 @@
 //! Create a domain name and buy the ownership of a domain name
 
-use web3_name_service_utils::{
-    checks::{check_account_key, check_account_owner, check_signer},
+use web3_utils::{
+    check::{check_account_key, check_account_owner, check_signer},
     BorshSize, InstructionsAccount,
+    borsh_size::BorshSize,
+    accounts::InstructionsAccount,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -14,14 +16,17 @@ use solana_program::{
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
-    rent::Rent,
-    system_program, sysvar,
+    rent::Rent, 
+    sysvar,
     sysvar::Sysvar,
-    system_instruction
 };
-use web3_domain_name_service::state::NameRecordHeader;
+use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
+use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::WEB3_NAME_SERVICE, state::{NameStateRecordHeader, ReferrerRecordHeader}, utils::{check_state_time_valid, get_hashed_name, get_seeds_and_key}};
+use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
+    state::{NameStateRecordHeader, ReferrerRecordHeader}, 
+    utils::{check_state_time_valid, get_hashed_name}
+};
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
@@ -52,9 +57,6 @@ pub struct Accounts<'a, T> {
     pub fee_payer: &'a T,
     /// The Pyth feed account
     pub pyth_feed_account: &'a T,
-    /// The vault account     
-    #[cons(writable)]
-    pub vault: &'a T,
     /// The rent sysvar account
     pub rent_sysvar: &'a T,
     /// the referrer -- must be unique
@@ -69,7 +71,6 @@ pub struct Accounts<'a, T> {
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     pub fn parse(
         accounts: &'a [AccountInfo<'b>],
-        _program_id: &Pubkey,
     ) -> Result<Self, ProgramError> {
         let accounts_iter = &mut accounts.iter();
         Ok(Accounts {
@@ -81,7 +82,6 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             central_state: next_account_info(accounts_iter)?,
             fee_payer: next_account_info(accounts_iter)?,
             pyth_feed_account: next_account_info(accounts_iter)?,
-            vault: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
             referrer_account: next_account_info(accounts_iter)?,
             referrer_record_account: next_account_info(accounts_iter)?,
@@ -92,7 +92,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
         check_account_key(self.naming_service_program, &WEB3_NAME_SERVICE).unwrap();
         msg!("nameservice id ok");
-        check_account_key(self.system_program, &system_program::ID).unwrap();
+        check_account_key(self.system_program, &SYSTEM_ID).unwrap();
         msg!("system_program id ok");
         check_account_key(self.central_state, &central_state::KEY).unwrap();
         msg!("central_state id ok");
@@ -100,10 +100,9 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         msg!("rent_sysvar id ok");
 
         // Check ownership
-        check_account_owner(self.domain_name_account, &system_program::ID)
+        check_account_owner(self.domain_name_account, &SYSTEM_ID)
             .map_err(|_| crate::Error::AlreadyRegistered)?;
-        check_account_owner(self.domain_state_account, &system_program::ID)
-            .map_err(|_| crate::Error::AlreadyRegistered)?;
+        // it's unnecessary to check domain state account's owner
         check_account_owner(self.root_domain, &WEB3_NAME_SERVICE)?;
         msg!("root_domain owner ok");
 
@@ -115,20 +114,15 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     }
 }
 
-pub fn process_create(
-    program_id: &Pubkey,
+
+
+pub fn process_start_name<'a, 'b: 'a>(
+    _program_id: &Pubkey,
     accounts: &[AccountInfo],
     params: Params,
 ) -> ProgramResult {
-    let accounts = Accounts::parse(accounts, program_id)?;
-    create(program_id, accounts, params)
-}
 
-pub fn create<'a, 'b: 'a>(
-    program_id: &Pubkey,
-    accounts: Accounts<'a, AccountInfo<'b>>,
-    params: Params,
-) -> ProgramResult {
+    let accounts = Accounts::parse(accounts)?;
     
     accounts.check()?;
     

@@ -1,35 +1,31 @@
 
-use web3_name_service_utils::checks::check_account_owner;
+use web3_domain_name_service::utils::get_seeds_and_key;
+use web3_utils::{
+    check::{check_account_owner, check_account_key, check_signer},
+    BorshSize,
+    borsh_size::BorshSize,
+    InstructionsAccount,
+    accounts::InstructionsAccount,
+};
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     msg,
     program::{invoke, invoke_signed},
     rent::Rent,
     sysvar::Sysvar,
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    program_error::ProgramError,
+    program_pack::Pack,
+    pubkey::Pubkey,
+    sysvar,
 };
+use solana_system_interface::instruction as system_instruction;
 use crate::{
-    central_state, constants::WEB3_NAME_SERVICE, utils::{get_hashed_name, get_seeds_and_key, get_sol_price, ADVANCED_STORAGE}
+    central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, utils::{get_hashed_name, get_sol_price, ADVANCED_STORAGE}
 };
 
 use crate::state::RootStateRecordHeader;
-
-use {
-    web3_name_service_utils::{
-        checks::{check_account_key, check_signer},
-        BorshSize, InstructionsAccount,
-    },
-    borsh::{BorshDeserialize, BorshSerialize},
-    // sns_sdk::record::Record,
-    solana_program::{
-        account_info::{next_account_info, AccountInfo},
-        entrypoint::ProgramResult,
-        program_error::ProgramError,
-        program_pack::Pack,
-        pubkey::Pubkey,
-        system_instruction,
-        system_program,
-        sysvar,
-    },
-};
 
 
 
@@ -72,11 +68,11 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         };
 
         // Check keys
-        check_account_key(accounts.system_program, &system_program::ID)?;
+        check_account_key(accounts.system_program, &SYSTEM_ID)?;
         check_account_key(accounts.rent_sysvar, &sysvar::rent::ID)?;
 
         // Check owners
-        check_account_owner(accounts.root_state_account, &system_program::ID)?;
+        check_account_owner(accounts.root_state_account, &SYSTEM_ID)?;
 
         // Check signer
         check_signer(accounts.initiator)?;
@@ -85,7 +81,11 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     }
 }
 
-pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], params: Params) -> ProgramResult {
+pub fn process_initiate_root(
+    _program_id: &Pubkey,
+     accounts: &[AccountInfo],
+      params: Params
+) -> ProgramResult {
     let accounts = Accounts::parse(accounts)?;
 
     let (root_state_key, seeds) = get_seeds_and_key(

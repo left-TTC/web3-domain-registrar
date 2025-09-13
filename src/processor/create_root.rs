@@ -5,22 +5,22 @@ use web3_utils::{
     InstructionsAccount,
     borsh_size::BorshSize,
     BorshSize,
+    check::check_account_owner
 };
-use web3_utils::{check::check_account_owner};
 use solana_program::{
     msg,
     rent::Rent,
     sysvar,
     sysvar::Sysvar,
 };
-use web3_domain_name_service::state::NameRecordHeader;
+use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 
 use crate::{
     central_state, 
-    constants::WEB3_NAME_SERVICE, 
+    constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
     cpi::Cpi, 
     state::{write_data, RootStateRecordHeader}, 
-    utils::{ get_hashed_name, get_seeds_and_key, get_sol_price, CREATE_ROOT_TARGET}
+    utils::{ get_hashed_name, get_sol_price, CREATE_ROOT_TARGET}
 };
 
 use {
@@ -34,15 +34,11 @@ use {
         program_error::ProgramError,
         program_pack::Pack,
         pubkey::Pubkey,
-        system_program,
         program::invoke,
     },
 };
 
-
-
-
-use crate::cpi;
+use solana_system_interface::instruction as instruction;
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
@@ -97,14 +93,14 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         };
 
         check_account_key(accounts.naming_service_program,  &WEB3_NAME_SERVICE)?;
-        check_account_key(accounts.system_program, &system_program::ID)?;
+        check_account_key(accounts.system_program, &SYSTEM_ID)?;
         check_account_key(accounts.central_state, &central_state::KEY)?;
         check_account_key(accounts.rent_sysvar, &sysvar::rent::ID)?;
 
         // Check owners
         check_account_owner(accounts.root_state_account, &crate::ID)?;
-        check_account_owner(accounts.root_name_account, &system_program::ID)?;
-        check_account_owner(accounts.root_reverse_lookup, &system_program::ID)?;
+        check_account_owner(accounts.root_name_account, &SYSTEM_ID)?;
+        check_account_owner(accounts.root_reverse_lookup, &SYSTEM_ID)?;
 
         // Check signer
         check_signer(accounts.fee_payer)?;
@@ -114,7 +110,11 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 }
 
 
-pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], params: Params) -> ProgramResult {
+pub fn process_create_root(
+    _program_id: &Pubkey, 
+    accounts: &[AccountInfo], 
+    params: Params
+) -> ProgramResult {
     if params.add < 1000 {
         msg!("add amount is too small");
         return Err(ProgramError::InvalidArgument);
@@ -228,8 +228,11 @@ pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], params: Params) -
     msg!("get add token price: {:?}", add_token_price );
 
     invoke(
-    &system_instruction::transfer(
-        accounts.fee_payer.key, &root_state_key, add_token_price), 
+    &instruction::transfer(
+            accounts.fee_payer.key,
+            accounts.vault.key,
+            add_token_price
+        ), 
         &[
             accounts.fee_payer.clone(),
             accounts.root_state_account.clone(),

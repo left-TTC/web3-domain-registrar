@@ -1,33 +1,33 @@
 //! Create a domain name and buy the ownership of a domain name
 
 use web3_utils::{
-    check::{check_account_key, check_account_owner, check_signer},
-    BorshSize, InstructionsAccount,
+    accounts::InstructionsAccount, 
+    borsh_size::BorshSize, 
+    check::{check_account_key, check_account_owner, check_signer}, 
+    BorshSize, 
+    InstructionsAccount
 };
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo},
-    entrypoint::ProgramResult,
-    msg,
-    program::invoke,
-    program_error::ProgramError,
-    program_pack::Pack,
-    pubkey::Pubkey,
-    rent::Rent,
-    system_program, sysvar,
-    sysvar::Sysvar,
+    account_info::{next_account_info, AccountInfo}, 
+    clock::Clock, entrypoint::ProgramResult, 
+    msg, 
+    program_error::ProgramError, 
+    program_pack::Pack, 
+    pubkey::Pubkey, 
+    sysvar::{self, Sysvar}
 };
-use web3_domain_name_service::state::{NameRecordHeader};
+use web3_domain_name_service::{utils::get_seeds_and_key};
 
-use crate::constants::WEB3_NAME_SERVICE;
+use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::{write_data, NameStateRecordHeader}, utils::get_hashed_name};
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
 pub struct Params {
     pub name: String,
-    pub space: u32,
-    pub referrer_idx_opt: Option<u16>,
+    my_price: u64,
 }
 
 #[derive(InstructionsAccount)]
@@ -55,24 +55,14 @@ pub struct Accounts<'a, T> {
     pub fee_payer: &'a T,
     /// The Pyth feed account
     pub pyth_feed_account: &'a T,
-    /// The vault account     
-    #[cons(writable)]
-    pub vault: &'a T,
     /// The rent sysvar account
     pub rent_sysvar: &'a T,
-    /// the referrer -- must be unique
-    /// one question: if usr want to get the profile from his next level
-    /// he or she must keep the info is correspond
-    #[cons(writable)]
-    pub referrer_account: &'a T,
-    #[cons(writable)]
-    pub referrer_record_account: &'a T,
+    // it's not necessary to confirm the referrer
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     pub fn parse(
         accounts: &'a [AccountInfo<'b>],
-        _program_id: &Pubkey,
     ) -> Result<Self, ProgramError> {
         let accounts_iter = &mut accounts.iter();
         Ok(Accounts {
@@ -85,13 +75,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             central_state: next_account_info(accounts_iter)?,
             fee_payer: next_account_info(accounts_iter)?,
             pyth_feed_account: next_account_info(accounts_iter)?,
-            vault: next_account_info(accounts_iter)?,
-            pyth_feed_account: next_account_info(accounts_iter)?,
-            vault: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
-            referrer_account: next_account_info(accounts_iter)?,
-            // state: next_account_info(accounts_iter)?,
-            referrer_record_account: next_account_info(accounts_iter).ok(),
         })
     }
 
@@ -99,7 +83,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
         check_account_key(self.naming_service_program, &WEB3_NAME_SERVICE).unwrap();
         msg!("nameservice id ok");
-        check_account_key(self.system_program, &system_program::ID).unwrap();
+        check_account_key(self.system_program, &SYSTEM_ID).unwrap();
         msg!("system_program id ok");
         check_account_key(self.central_state, &central_state::KEY).unwrap();
         msg!("central_state id ok");
@@ -107,7 +91,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         msg!("rent_sysvar id ok");
 
         // Check ownership
-        check_account_owner(self.name, &system_program::ID)
+        check_account_owner(self.name, &SYSTEM_ID)
             .map_err(|_| crate::Error::AlreadyRegistered)?;
         check_account_owner(self.root_domain, &WEB3_NAME_SERVICE)?;
         check_account_owner(self.domain_state_account, &crate::ID)
@@ -121,36 +105,13 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 }
 
 
-
-pub fn process_create(
-    program_id: &Pubkey,
+pub fn process_increase_price<'a, 'b: 'a>(
+    _program_id: &Pubkey,
     accounts: &[AccountInfo],
     params: Params,
 ) -> ProgramResult {
-    let accounts = Accounts::parse(accounts, program_id)?;
-    create(program_id, accounts, params)
-}
-
-pub fn create<'a, 'b: 'a>(
-    program_id: &Pubkey,
-    accounts: Accounts<'a, AccountInfo<'b>>,
-    params: Params,
-) -> ProgramResult {
-    
+    let accounts = Accounts::parse(accounts)?;
     accounts.check()?;
-    
-    if params.name != params.name.trim().to_lowercase() {
-        msg!("Domain names must be lower case and have no space");
-        return Err(ProgramError::InvalidArgument);
-    }
-    
-    if params.name.contains('.') {
-        return Err(ProgramError::InvalidArgument);
-    }
-
-    #[cfg(feature = "devnet")]
-    msg!("root: {}", accounts.root_domain.key);
-    msg!("name: {}", params.name);
 
     let (name_account_key, _) = get_seeds_and_key(
         accounts.naming_service_program.key, 
@@ -181,70 +142,29 @@ pub fn create<'a, 'b: 'a>(
     }
 
     //auction state
-
-    let central_state_signer_seeds: &[&[u8]] = &[&program_id.to_bytes(), &[central_state::NONCE]];
-
-    let mut domain_token_price = get_domain_price(&params.name, &accounts)?;
-
-    let token_acc = spl_token::state::Account::unpack(&accounts.buyer_token_source.data.borrow())?;
-    if token_acc.mint == FWC_MINT {
-        domain_token_price = domain_token_price.checked_mul(95).ok_or(Error::Overflow)? / 100;
+    let (name_state_key, name_state_seeds) = get_seeds_and_key(
+        &crate::ID, 
+        get_hashed_name(&params.name), 
+        Some(&central_state::KEY), 
+        Some(accounts.root_domain.key)
+    );
+    
+    let name_state_account = accounts.domain_state_account;
+    if name_state_key != *name_state_account.key {
+        msg!("The given name state account is incorrect.");
+        return Err(ProgramError::InvalidArgument);
     }
 
-    //sns -- transfer coins to referrer
+    let name_state_data = 
+        NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
 
-    //
+    write_data(accounts.domain_state_account, &accounts.fee_payer.key.to_bytes(), 0);
 
-    //transfer domain's price
-    let transfer_ix = transfer(
-        &spl_token::ID,
-        accounts.buyer_token_source.key,
-        accounts.vault.key,
-        accounts.buyer.key,
-        &[],
-        domain_token_price,
-    ).unwrap();
+    let update_time = Clock::get()?.unix_timestamp;
+    write_data(accounts.domain_state_account, &update_time.to_le_bytes(), 64);
+    
+    let new_price: u64 = name_state_data.highest_price + params.my_price;
+    write_data(accounts.domain_state_account, &new_price.to_le_bytes(), 72);
 
-    invoke(
-        &transfer_ix,
-        &[
-            accounts.spl_token_program.clone(),
-            accounts.buyer_token_source.clone(),
-            accounts.vault.clone(),
-            accounts.buyer.clone(),
-        ],
-    ).unwrap();
-
-    let rent = Rent::get()?;
-    let hashed_name = get_hashed_name(&params.name);
-    Cpi::create_name_account(
-        accounts.naming_service_program,
-        accounts.system_program,
-        accounts.name,
-        accounts.fee_payer,
-        accounts.domain_owner,
-        accounts.root_domain,
-        accounts.central_state,
-        hashed_name,
-        rent.minimum_balance(NameRecordHeader::LEN + params.space as usize),
-        params.space,
-        central_state_signer_seeds,
-    )?;
-
-    if accounts.reverse_lookup.data_len() == 0 {
-        Cpi::create_reverse_lookup_account(
-            accounts.naming_service_program,
-            accounts.system_program,
-            accounts.reverse_lookup,
-            accounts.fee_payer,
-            params.name,
-            hashed_reverse_lookup,
-            accounts.central_state,
-            accounts.rent_sysvar,
-            central_state_signer_seeds,
-            None,
-            None,
-        )?;
-    }
     Ok(())
 }

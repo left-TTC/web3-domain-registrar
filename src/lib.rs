@@ -28,14 +28,18 @@ pub mod constants {
 
     pub const WSOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
 
+    pub const SYSTEM_ID: Pubkey = pubkey!("So11111111111111111111111111111111111111111");
+
 }
 
 
 #[cfg(test)]
 mod test {
 
+    use solana_program::msg;
+    use solana_system_interface::program::ID as id;
     #[test]
     fn test (){
-        let test_array: [u8; 11] = [13, 2, 0, 0, 0, 97, 97, 0, 4, 0, 0,];
+        msg!("solana_system_interface::program::ID is {:?}", id);
     }
 }
