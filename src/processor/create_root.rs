@@ -20,7 +20,7 @@ use crate::{
     constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
     cpi::Cpi, 
     state::{write_data, RootStateRecordHeader}, 
-    utils::{ get_hashed_name, get_sol_price, CREATE_ROOT_TARGET}
+    utils::{ get_hashed_name, get_sol_price, CREATE_ROOT_TARGET, ROOT_INCREASE_LINIT}
 };
 
 use {
@@ -115,8 +115,8 @@ pub fn process_create_root(
     accounts: &[AccountInfo], 
     params: Params
 ) -> ProgramResult {
-    if params.add < 1000 {
-        msg!("add amount is too small");
+    if params.add < ROOT_INCREASE_LINIT {
+        msg!("Exceeding the minimum limit");
         return Err(ProgramError::InvalidArgument);
     }
     let accounts = Accounts::parse(accounts)?;
@@ -132,8 +132,8 @@ pub fn process_create_root(
     msg!("check vault ok");
 
     let hashed_name_account = get_hashed_name(&params.root_name);
-    let root_state_account = accounts.root_state_account;
 
+    let root_state_account = accounts.root_state_account;
     let (root_state_key, _) = get_seeds_and_key(
         &crate::ID, 
         hashed_name_account.clone(), 
@@ -144,11 +144,6 @@ pub fn process_create_root(
     msg!("rootState ok");
 
     let root_state_account_data = root_state_account.data.borrow();
-    if root_state_account_data.len() != 72 {
-        msg!("root state account's length error");
-        return  Err(ProgramError::InvalidArgument);
-    }
-    
     let root_record_header = 
         RootStateRecordHeader::unpack_from_slice(&root_state_account_data)?;
 
@@ -161,30 +156,31 @@ pub fn process_create_root(
     msg!("used to be: {:?} and now {:?}, add amount ok", root_record_header.amount, added_amount);
 
     let bytes = added_amount.to_le_bytes();
-    msg!("added_amount bytes: {:?}", bytes);
     write_data(accounts.root_state_account, &bytes, 32);
-    msg!("write ok");
+    msg!("write amount ok");
 
     let mut difference: u64 = 0;
 
     if added_amount >= CREATE_ROOT_TARGET {
+        let root_name_account = accounts.root_name_account;
         let (root_name_key, _) = get_seeds_and_key(
             accounts.naming_service_program.key,
             hashed_name_account.clone(), 
             None, 
             None
         );
-        check_account_key(accounts.root_name_account, &root_name_key)?;
+        check_account_key(root_name_account, &root_name_key)?;
         msg!("root_name_account ok");
 
         let hashed_reverse_lookup = get_hashed_name(&root_name_key.to_string());
+        let root_reverse_account = accounts.root_reverse_lookup;
         let (reserse_look_up, _) = get_seeds_and_key(
             accounts.naming_service_program.key, 
             hashed_reverse_lookup.clone(), 
             Some(&central_state::KEY), 
             None
         );
-        check_account_key(accounts.root_reverse_lookup, &reserse_look_up)?;
+        check_account_key(root_reverse_account, &reserse_look_up)?;
         msg!("root_reverse_lookup ok");
 
         let rent = Rent::from_account_info(accounts.rent_sysvar)?;
@@ -194,7 +190,7 @@ pub fn process_create_root(
         Cpi::create_root_name_account(
             accounts.naming_service_program,
             accounts.system_program,
-            accounts.root_name_account,
+            root_name_account,
             accounts.vault,
             accounts.central_state,
             hashed_name_account,
@@ -205,11 +201,11 @@ pub fn process_create_root(
         )?;
 
         msg!("create root reverse account");
-        if accounts.root_reverse_lookup.data_len() == 0 {
+        if root_reverse_account.data_len() == 0 {
             Cpi::create_root_reverse_lookup_account(
                 accounts.naming_service_program, 
                 accounts.system_program, 
-                accounts.root_reverse_lookup, 
+                root_reverse_account, 
                 accounts.vault, 
                 params.root_name, 
                 hashed_reverse_lookup, 

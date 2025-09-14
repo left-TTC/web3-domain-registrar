@@ -5,11 +5,18 @@ use solana_program::{
 use web3_utils::pyth::get_domain_price_sol;
 
 
-pub const ADVANCED_STORAGE: u64 = 500000;
+pub const ADVANCED_STORAGE: u64 = 5000000;
 #[cfg(not(feature = "devnet"))]
 pub const CREATE_ROOT_TARGET: u64 = 500000000000;
 #[cfg(feature = "devnet")]
 pub const CREATE_ROOT_TARGET: u64 = 20000000;
+
+pub const ROOT_INCREASE_LINIT: u64 = 1000000;
+
+// about $0.99
+pub const START_PRICE: u64 = 990000;
+
+pub const AUCTION_DEPOSIT: u64 = 5000000;
 
 //Get the required number of tokens
 pub fn get_sol_price(

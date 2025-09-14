@@ -20,13 +20,13 @@ impl Sealed for NameStateRecordHeader {}
 
 impl NameStateRecordHeader {
     pub fn new(
-        highest_bidder: Pubkey, rent_payer: Pubkey, frist_time: i64, start_price: u64
+        highest_bidder: &Pubkey, rent_payer: &Pubkey, frist_time: i64, highest_price: u64
     ) -> Self {
         Self { 
-            highest_bidder: highest_bidder, 
-            rent_payer: rent_payer,
+            highest_bidder: *highest_bidder, 
+            rent_payer: *rent_payer,
             update_time: frist_time, 
-            highest_price: start_price, 
+            highest_price: highest_price, 
         }
     }
 }

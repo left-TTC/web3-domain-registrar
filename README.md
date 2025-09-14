@@ -2,11 +2,14 @@
 
 
 ## Deploy
-solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.json target/sbf-so
-lana-solana/release/web3_domain_registrar.so  --use-rpc
+```bash
+solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.json target/sbf-solana-solana/release/web3_domain_registrar.so  --use-rpc
+```
 
 ## Bulid
+```bash
 cargo build-sbf
+```
 
 ## Account Structure
 > About get_seeds_and_keys
@@ -21,4 +24,14 @@ cargo build-sbf
 |WEB3_REGISTRAR |       Register_Central        |       Root Domain        |   Name State Account |
 |WEB3_REGISTRAR  |       Register_Central        |       Register_Central        |   Vault |
 |WEB3_REGISTRAR  |       WEB3_REGISTRAR        |       WEB3_REGISTRAR        |   Referrer Record |
+
+## Profit Sharing Ideas
+
+### 1. Refferer
+Every usr will set a refereer 
+> We plan to distribute 90% of the profits to the referrers in the next three levels（only create）.
+
+### 2. rent exemption
+When create a domain auction state, the sponsor needs to pay the rent exemption, but when the domain is twice auctioned, rent exemption has beed paid by the sponor, it's unfair
+> I plan to distribute 2% of the profits to the sponor for his distribution in every auction, and we will get the 1%  
 

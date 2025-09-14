@@ -12,6 +12,7 @@ pub mod start_name;
 pub mod increase_price;
 pub mod create_root;
 pub mod initiate_root;
+pub mod settle_auction;
 
 pub struct Processor {}
 

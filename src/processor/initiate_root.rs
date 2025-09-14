@@ -88,14 +88,13 @@ pub fn process_initiate_root(
 ) -> ProgramResult {
     let accounts = Accounts::parse(accounts)?;
 
+    let root_state_account = accounts.root_state_account;
     let (root_state_key, seeds) = get_seeds_and_key(
         &crate::ID, 
         get_hashed_name(&params.root_name), 
         None, 
         None
     );
-
-    let root_state_account = accounts.root_state_account;
     if root_state_key != *root_state_account.key {
         msg!("The given root state account is incorrect.");
         return Err(ProgramError::InvalidArgument);
@@ -127,13 +126,26 @@ pub fn process_initiate_root(
         }
     }
 
+    // frist transfer the advanced storage -- will be used to create root name state account
+    let extra_lamports = 
+        get_sol_price(accounts.pyth_feed_account, ADVANCED_STORAGE)?;
+
+    invoke(
+    &system_instruction::transfer(
+        accounts.initiator.key, accounts.vault.key, extra_lamports), 
+        &[
+            accounts.initiator.clone(),
+            accounts.root_state_account.clone(),
+            accounts.system_program.clone(),
+        ],
+    )?;
+
+    // if the root state account doesn't created
     if root_state_account.data.borrow().len() == 0 {
 
         let rent = Rent::from_account_info(accounts.rent_sysvar)?;
         let root_state_lamports = rent.minimum_balance(RootStateRecordHeader::LEN);
-        let extra_lamports = 
-            get_sol_price(accounts.pyth_feed_account, ADVANCED_STORAGE)?;
-
+        
         invoke(
         &system_instruction::transfer(
             accounts.initiator.key, &root_state_key, root_state_lamports), 
@@ -158,20 +170,16 @@ pub fn process_initiate_root(
             &[accounts.root_state_account.clone(), accounts.system_program.clone()],
             &[&seeds.chunks(32).collect::<Vec<&[u8]>>()],
         )?;
-
-        invoke(
-        &system_instruction::transfer(
-            accounts.initiator.key, accounts.vault.key, extra_lamports), 
-            &[
-                accounts.initiator.clone(),
-                accounts.root_state_account.clone(),
-                accounts.system_program.clone(),
-            ],
-        )?;
+    }else {
+        return Err(ProgramError::AccountAlreadyInitialized);
     }
-    
-    let init_state: RootStateRecordHeader = 
-        RootStateRecordHeader::new(*accounts.initiator.key, ADVANCED_STORAGE, &params.root_name);
+
+    let init_state: RootStateRecordHeader = RootStateRecordHeader::
+        new(
+            *accounts.initiator.key, 
+            ADVANCED_STORAGE, 
+            &params.root_name
+        );
     
     init_state.pack_into_slice(&mut accounts.root_state_account.data.borrow_mut());
 
