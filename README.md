@@ -3,14 +3,14 @@
 
 ## Deploy
 ```bash
-solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.json target/sbf-solana-solana/release/web3_domain_registrar.so  --use-rpc
+solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.json target/sbf-solana-solana/release/web3_domain_name_
+service.so  --use-rpc
 ```
 
 ## Bulid
 ```bash
 cargo build-sbf
 ```
-
 ## Account Structure
 > About get_seeds_and_keys
 

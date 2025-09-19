@@ -19,9 +19,9 @@ impl Cpi {
         fee_payer: &AccountInfo<'a>,
         name: String,
         hashed_reverse_lookup: Vec<u8>,
-        authority: &AccountInfo<'a>,
+        authority_and_root_only_owner: &AccountInfo<'a>,
         rent_sysvar_account: &AccountInfo<'a>,
-        signer_seeds: &[&[u8]],
+        authority_seeds: &[&[u8]],
         vault_seeds: &Vec<u8>,
     ) -> ProgramResult {
         let name_bytes = ReverseLookup { name }.try_to_vec().unwrap();
@@ -38,8 +38,8 @@ impl Cpi {
             },
             *reverse_lookup_account.key,
             *fee_payer.key,
-            *authority.key,
-            Some(*authority.key),
+            *authority_and_root_only_owner.key,
+            Some(*authority_and_root_only_owner.key),
             None,
             None,
         )?;
@@ -47,7 +47,7 @@ impl Cpi {
         let accounts_create = vec![
             name_service_program.clone(),
             fee_payer.clone(),
-            authority.clone(),
+            authority_and_root_only_owner.clone(),
             reverse_lookup_account.clone(),
             system_program_account.clone(),
         ];
@@ -55,7 +55,7 @@ impl Cpi {
         let accounts_update = vec![
             name_service_program.clone(),
             reverse_lookup_account.clone(),
-            authority.clone(),
+            authority_and_root_only_owner.clone(),
         ];
 
         invoke_signed(
@@ -63,7 +63,7 @@ impl Cpi {
             &accounts_create, 
             &[
                 &vault_seeds.chunks(32).collect::<Vec<&[u8]>>(),
-                signer_seeds
+                authority_seeds
             ])?;
 
         let write_name_instruction = web3_domain_name_service::instruction::update(
@@ -71,11 +71,11 @@ impl Cpi {
             0,
             name_bytes,
             *reverse_lookup_account.key,
-            *authority.key,
+            *authority_and_root_only_owner.key,
             None,
         )?;
 
-        invoke_signed(&write_name_instruction, &accounts_update, &[signer_seeds])?;
+        invoke_signed(&write_name_instruction, &accounts_update, &[authority_seeds])?;
         Ok(())
     }
 }

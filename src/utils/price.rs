@@ -18,6 +18,8 @@ pub const START_PRICE: u64 = 990000;
 
 pub const AUCTION_DEPOSIT: u64 = 5000000;
 
+pub const PROJECT_START: u64 = 500000000;
+
 //Get the required number of tokens
 pub fn get_sol_price(
     sol_pyth_feed: &AccountInfo<'_>,

@@ -19,7 +19,7 @@ impl Cpi {
         fee_payer: &AccountInfo<'a>,
         name: String,
         hashed_reverse_lookup: Vec<u8>,
-        authority: &AccountInfo<'a>,
+        authority_and_reverse_owner: &AccountInfo<'a>,
         rent_sysvar_account: &AccountInfo<'a>,
         signer_seeds: &[&[u8]],
         parent_name_opt: Option<&AccountInfo<'a>>,
@@ -39,8 +39,8 @@ impl Cpi {
             },
             *reverse_lookup_account.key,
             *fee_payer.key,
-            *authority.key,
-            Some(*authority.key),
+            *authority_and_reverse_owner.key,
+            Some(*authority_and_reverse_owner.key),
             parent_name_opt.map(|a| *a.key),
             parent_name_owner_opt.map(|a| *a.key),
         )?;
@@ -48,7 +48,7 @@ impl Cpi {
         let mut accounts_create = vec![
             name_service_program.clone(),
             fee_payer.clone(),
-            authority.clone(),
+            authority_and_reverse_owner.clone(),
             reverse_lookup_account.clone(),
             system_program_account.clone(),
         ];
@@ -56,7 +56,7 @@ impl Cpi {
         let mut accounts_update = vec![
             name_service_program.clone(),
             reverse_lookup_account.clone(),
-            authority.clone(),
+            authority_and_reverse_owner.clone(),
         ];
 
         if let Some(parent_name) = parent_name_opt {
@@ -72,7 +72,7 @@ impl Cpi {
             0,
             name_bytes,
             *reverse_lookup_account.key,
-            *authority.key,
+            *authority_and_reverse_owner.key,
             parent_name_opt.map(|a| *a.key),
         )?;
 

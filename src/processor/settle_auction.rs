@@ -10,13 +10,7 @@ use web3_utils::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo}, 
-    entrypoint::ProgramResult, 
-    msg, 
-    program::invoke, 
-    program_error::ProgramError, 
-    program_pack::Pack, 
-    pubkey::Pubkey, rent::Rent, sysvar::Sysvar, 
+    account_info::{next_account_info, AccountInfo}, sysvar, entrypoint::ProgramResult, msg, program::invoke, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, rent::Rent, sysvar::Sysvar 
 };
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 
@@ -107,6 +101,8 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         msg!("nameservice id ok");
         check_account_key(self.system_program, &SYSTEM_ID).unwrap();
         msg!("system_program id ok");
+        check_account_key(self.rent_sysvar, &sysvar::rent::ID)?;
+
 
         // Check ownership
         check_account_owner(self.name, &SYSTEM_ID)
