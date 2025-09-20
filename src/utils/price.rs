@@ -1,6 +1,6 @@
 
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError,
+    account_info::AccountInfo, clock::Clock, program_error::ProgramError, sysvar::Sysvar
 };
 use web3_utils::pyth::get_domain_price_sol;
 
@@ -25,5 +25,6 @@ pub fn get_sol_price(
     sol_pyth_feed: &AccountInfo<'_>,
     usd_price: u64,
 ) -> Result<u64, ProgramError> {
-    get_domain_price_sol(usd_price, sol_pyth_feed)
+    let clock = Clock::get()?;
+    get_domain_price_sol(usd_price, sol_pyth_feed, &clock)
 }

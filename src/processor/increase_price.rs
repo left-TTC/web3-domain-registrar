@@ -124,7 +124,8 @@ pub fn process_increase_price<'a, 'b: 'a>(
     check_account_key(name_state_account, &name_state_key)?;
     
     // transfer back the deposit
-    let back_deposit = get_sol_price(accounts.pyth_feed_account, AUCTION_DEPOSIT)?;
+    let back_deposit = 
+        get_sol_price(accounts.pyth_feed_account, AUCTION_DEPOSIT)?;
     invoke(&system_instruction::transfer(
         accounts.fee_payer.key, accounts.last_bidder.key, back_deposit), 
         &[

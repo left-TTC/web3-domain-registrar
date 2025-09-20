@@ -118,6 +118,7 @@ pub fn process_initiate_root(
     msg!("check vault ok");
 
     if root_state_account.data.borrow().len() > 0 {
+        msg!("the root state account's length > 0");
         let root_record_header = 
             RootStateRecordHeader::unpack_from_slice(&root_state_account.data.borrow())?;
         if root_record_header.initiator != Pubkey::default() {
@@ -125,20 +126,24 @@ pub fn process_initiate_root(
             return Err(ProgramError::InvalidArgument);
         }
     }
+    msg!("root state account ok");
 
     // frist transfer the advanced storage -- will be used to create root name state account
     let extra_lamports = 
         get_sol_price(accounts.pyth_feed_account, ADVANCED_STORAGE)?;
+
+    msg!("get extract Sol ok: {:?}", extra_lamports);
 
     invoke(
     &system_instruction::transfer(
         accounts.initiator.key, accounts.vault.key, extra_lamports), 
         &[
             accounts.initiator.clone(),
-            accounts.root_state_account.clone(),
+            accounts.vault.clone(),
             accounts.system_program.clone(),
         ],
     )?;
+    msg!("transfer to vault ok");
 
     // if the root state account doesn't created
     if root_state_account.data.borrow().len() == 0 {
@@ -171,8 +176,10 @@ pub fn process_initiate_root(
             &[&seeds.chunks(32).collect::<Vec<&[u8]>>()],
         )?;
     }else {
+        msg!("root state length err");
         return Err(ProgramError::AccountAlreadyInitialized);
     }
+    msg!("crea root state account ok");
 
     let init_state: RootStateRecordHeader = RootStateRecordHeader::
         new(
@@ -182,6 +189,7 @@ pub fn process_initiate_root(
         );
     
     init_state.pack_into_slice(&mut accounts.root_state_account.data.borrow_mut());
+    msg!("write root state data ok");
 
     Ok(())
 }

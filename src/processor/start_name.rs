@@ -273,7 +273,8 @@ pub fn process_start_name<'a, 'b: 'a>(
         write_data(name_state_account, &highest_price, 72);
     }
 
-    let deposit = get_sol_price(accounts.pyth_feed_account, AUCTION_DEPOSIT)?; 
+    let deposit = 
+    get_sol_price(accounts.pyth_feed_account, AUCTION_DEPOSIT)?; 
     invoke(
         &system_instruction::transfer(
             accounts.fee_payer.key, &vault_key, deposit), 
