@@ -1,4 +1,5 @@
 
+
 use super::Cpi;
 
 use solana_program::{
@@ -15,11 +16,10 @@ impl Cpi {
         name_service_program: &AccountInfo<'a>,
         system_program_account: &AccountInfo<'a>,
         name_account: &AccountInfo<'a>,
-        vault_pay: &AccountInfo<'a>,
+        admin: &AccountInfo<'a>,
         central_state_register_and_root_only_onwer: &AccountInfo<'a>,
         hashed_name: Vec<u8>,
         lamports: u64,
-        signer_seeds: &Vec<u8>,
     ) -> ProgramResult {
         let create_name_instruction = web3_domain_name_service::instruction::create(
             *name_service_program.key,
@@ -30,7 +30,7 @@ impl Cpi {
                 custom_value: None,
             },
             *name_account.key,
-            *vault_pay.key,
+            *admin.key,
             *central_state_register_and_root_only_onwer.key,
             None,
             None,
@@ -41,12 +41,13 @@ impl Cpi {
             &create_name_instruction,
             &[
                 name_service_program.clone(),
-                vault_pay.clone(),
+                admin.clone(),
                 name_account.clone(),
                 central_state_register_and_root_only_onwer.clone(),
                 system_program_account.clone(),
             ],
-            &[&signer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+            &[],
         )
     }
+
 }

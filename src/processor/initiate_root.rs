@@ -129,21 +129,10 @@ pub fn process_initiate_root(
     msg!("root state account ok");
 
     // frist transfer the advanced storage -- will be used to create root name state account
-    let extra_lamports = 
+    let mut extra_lamports = 
         get_sol_price(accounts.pyth_feed_account, ADVANCED_STORAGE)?;
 
     msg!("get extract Sol ok: {:?}", extra_lamports);
-
-    invoke(
-    &system_instruction::transfer(
-        accounts.initiator.key, accounts.vault.key, extra_lamports), 
-        &[
-            accounts.initiator.clone(),
-            accounts.vault.clone(),
-            accounts.system_program.clone(),
-        ],
-    )?;
-    msg!("transfer to vault ok");
 
     // if the root state account doesn't created
     if root_state_account.data.borrow().len() == 0 {
@@ -175,11 +164,25 @@ pub fn process_initiate_root(
             &[accounts.root_state_account.clone(), accounts.system_program.clone()],
             &[&seeds.chunks(32).collect::<Vec<&[u8]>>()],
         )?;
+
+        extra_lamports -= root_state_lamports;
     }else {
-        msg!("root state length err");
+        msg!("root state length err"); 
         return Err(ProgramError::AccountAlreadyInitialized);
     }
     msg!("crea root state account ok");
+
+    invoke(
+    &system_instruction::transfer(
+        accounts.initiator.key, accounts.vault.key, extra_lamports), 
+        &[
+            accounts.initiator.clone(),
+            accounts.vault.clone(),
+            accounts.system_program.clone(),
+        ],
+    )?;
+    msg!("transfer to vault ok");
+
 
     let init_state: RootStateRecordHeader = RootStateRecordHeader::
         new(

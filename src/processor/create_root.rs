@@ -9,18 +9,14 @@ use web3_utils::{
 };
 use solana_program::{
     msg,
-    rent::Rent,
-    sysvar,
-    sysvar::Sysvar,
 };
-use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
+use web3_domain_name_service::{utils::get_seeds_and_key};
 
 use crate::{
     central_state, 
     constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
-    cpi::Cpi, 
     state::{write_data, RootStateRecordHeader}, 
-    utils::{ get_hashed_name, get_sol_price, CREATE_ROOT_TARGET, ROOT_INCREASE_LINIT}
+    utils::{ get_hashed_name, get_seeds_and_keys, get_sol_price, CREATE_ROOT_TARGET}
 };
 
 use {
@@ -49,8 +45,6 @@ pub struct Params {
 
 #[derive(InstructionsAccount)]
 pub struct Accounts<'a, T> {
-    /// The naming service program ID
-    pub naming_service_program: &'a T,
     /// The system program account
     pub system_program: &'a T,
     /// The vault account     
@@ -65,14 +59,6 @@ pub struct Accounts<'a, T> {
     /// The registrar central state account
     pub central_state: &'a T,
     /// root domain name account
-    #[cons(writable)]
-    pub root_name_account: &'a T,
-    /// root domain's reverse lookup account
-    #[cons(writable)]
-    pub root_reverse_lookup: &'a T,
-    /// The rent sysvar account
-    pub rent_sysvar: &'a T,
-    /// The Pyth feed account
     pub pyth_feed_account: &'a T,
 }
 
@@ -80,27 +66,20 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     pub fn parse(accounts: &'a [AccountInfo<'b>]) -> Result<Self, ProgramError> {
         let accounts_iter = &mut accounts.iter();
         let accounts = Accounts {
-            naming_service_program: next_account_info(accounts_iter)?,
             system_program: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
             fee_payer: next_account_info(accounts_iter)?,
-            central_state: next_account_info(accounts_iter)?,
             root_state_account: next_account_info(accounts_iter)?,
-            root_name_account: next_account_info(accounts_iter)?,
-            root_reverse_lookup: next_account_info(accounts_iter)?,
-            rent_sysvar: next_account_info(accounts_iter)?,
+            central_state: next_account_info(accounts_iter)?,
             pyth_feed_account: next_account_info(accounts_iter)?,
         };
 
-        check_account_key(accounts.naming_service_program,  &WEB3_NAME_SERVICE)?;
         check_account_key(accounts.system_program, &SYSTEM_ID)?;
         check_account_key(accounts.central_state, &central_state::KEY)?;
-        check_account_key(accounts.rent_sysvar, &sysvar::rent::ID)?;
 
         // Check owners
         check_account_owner(accounts.root_state_account, &crate::ID)?;
-        check_account_owner(accounts.root_name_account, &SYSTEM_ID)?;
-        check_account_owner(accounts.root_reverse_lookup, &SYSTEM_ID)?;
+        check_account_owner(accounts.vault, &crate::ID)?;
 
         // Check signer
         check_signer(accounts.fee_payer)?;
@@ -109,20 +88,19 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     }
 }
 
-
+// only add the rooy state
 pub fn process_create_root(
     _program_id: &Pubkey, 
     accounts: &[AccountInfo], 
     params: Params
 ) -> ProgramResult {
-    if params.add < ROOT_INCREASE_LINIT {
-        msg!("Exceeding the minimum limit");
-        return Err(ProgramError::InvalidArgument);
-    }
+
+    msg!("root name: {:?}, add: {:?}", params.root_name, params.add);
+
     let accounts = Accounts::parse(accounts)?;
     msg!("parse ok");
 
-    let (vault, vault_seed) = get_seeds_and_key(
+    let (vault, _) = get_seeds_and_keys(
         &crate::ID, 
         get_hashed_name("vault"), 
         Some(&central_state::KEY), 
@@ -140,20 +118,27 @@ pub fn process_create_root(
         None, 
         None
     );
-    check_account_key(root_state_account, &root_state_key)?;
-    msg!("rootState ok");
-
-    let root_state_account_data = root_state_account.data.borrow();
-    let root_record_header = 
-        RootStateRecordHeader::unpack_from_slice(&root_state_account_data)?;
-
-    if root_record_header.get_name() != params.root_name{
-        msg!("fault root name");
+    if root_state_key != *root_state_account.key {
+        msg!("The given root state account is incorrect.");
         return Err(ProgramError::InvalidArgument);
     }
+    msg!("rootState ok");
 
-    let added_amount = root_record_header.amount + params.add;
-    msg!("used to be: {:?} and now {:?}, add amount ok", root_record_header.amount, added_amount);
+    let mut added_amount = params.add;
+    {
+        let root_state_account_data = root_state_account.data.borrow();
+        let root_record_header = 
+            RootStateRecordHeader::unpack_from_slice(&root_state_account_data)?;
+
+        if root_record_header.amount >= CREATE_ROOT_TARGET {
+            msg!("already enough");
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        added_amount += root_record_header.amount;
+        
+        msg!("used to be: {:?} and now {:?}, add amount ok", root_record_header.amount, added_amount);
+    }
 
     let bytes = added_amount.to_le_bytes();
     write_data(accounts.root_state_account, &bytes, 32);
@@ -161,61 +146,7 @@ pub fn process_create_root(
 
     let mut difference: u64 = 0;
 
-    if added_amount >= CREATE_ROOT_TARGET {
-        let root_name_account = accounts.root_name_account;
-        let (root_name_key, _) = get_seeds_and_key(
-            accounts.naming_service_program.key,
-            hashed_name_account.clone(), 
-            None, 
-            None
-        );
-        check_account_key(root_name_account, &root_name_key)?;
-        msg!("root_name_account ok");
-
-        let hashed_reverse_lookup = get_hashed_name(&root_name_key.to_string());
-        let root_reverse_account = accounts.root_reverse_lookup;
-        let (reserse_look_up, _) = get_seeds_and_key(
-            accounts.naming_service_program.key, 
-            hashed_reverse_lookup.clone(), 
-            Some(&central_state::KEY), 
-            None
-        );
-        check_account_key(root_reverse_account, &reserse_look_up)?;
-        msg!("root_reverse_lookup ok");
-
-        let rent = Rent::from_account_info(accounts.rent_sysvar)?;
-        let central_state_signer_seeds: &[&[u8]] = &[&crate::ID.to_bytes(), &[central_state::NONCE]];
-
-        msg!("create root account");
-        Cpi::create_root_name_account(
-            accounts.naming_service_program,
-            accounts.system_program,
-            root_name_account,
-            accounts.vault,
-            accounts.central_state,
-            hashed_name_account,
-            rent.minimum_balance(NameRecordHeader::LEN),
-            // because this is the root domain
-            // means we don't need the parent name owner's signature
-            &vault_seed,
-        )?;
-
-        msg!("create root reverse account");
-        if root_reverse_account.data_len() == 0 {
-            Cpi::create_root_reverse_lookup_account(
-                accounts.naming_service_program, 
-                accounts.system_program, 
-                root_reverse_account, 
-                accounts.vault, 
-                params.root_name, 
-                hashed_reverse_lookup, 
-                accounts.central_state, 
-                accounts.rent_sysvar, 
-                central_state_signer_seeds, 
-                &vault_seed,
-            )?;
-        }
-
+    if added_amount > CREATE_ROOT_TARGET {
         difference = added_amount - CREATE_ROOT_TARGET;
     }
 
@@ -231,7 +162,7 @@ pub fn process_create_root(
         ), 
         &[
             accounts.fee_payer.clone(),
-            accounts.root_state_account.clone(),
+            accounts.vault.clone(),
             accounts.system_program.clone(),
         ],
     )?;

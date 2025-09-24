@@ -16,7 +16,7 @@ use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key
 
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, cpi::Cpi, state::NameStateRecordHeader, utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, AUCTION_DEPOSIT, TIME}};
+use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, cpi::Cpi, state::NameStateRecordHeader, utils::{check_state_time, get_hashed_name, get_sol_price, TIME}};
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
@@ -53,15 +53,9 @@ pub struct Accounts<'a, T> {
     pub pyth_feed_account: &'a T,
     /// rent sysvar
     pub rent_sysvar: &'a T,
-    /// state account rent payer
-    #[cons(writable)]
-    pub state_rent_payer: &'a T,
     /// buyer's referrer -- we named A
     #[cons(writable)]
     pub referrer_one: &'a T,
-    /// vault
-    #[cons(writable)]
-    pub vault: &'a T,
     /// A's refferrer -- named B
     #[cons(writable)]
     pub referrer_two: Option<&'a T>,
@@ -87,9 +81,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             fee_payer: next_account_info(accounts_iter)?,
             pyth_feed_account: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
-            state_rent_payer: next_account_info(accounts_iter)?,
             referrer_one: next_account_info(accounts_iter)?,
-            vault: next_account_info(accounts_iter)?,
             referrer_two: accounts_iter.next(),
             referrer_three: accounts_iter.next(),
         })
@@ -129,6 +121,14 @@ pub fn process_settle_auction<'a, 'b: 'a>(
     accounts.check()?;
 
     let name_state_account = accounts.domain_state_account;
+    let (name_state_key, _) = get_seeds_and_key(
+        &crate::ID, 
+        get_hashed_name(&params.name), 
+        Some(&central_state::KEY), 
+        Some(accounts.root_domain.key)
+    );
+    check_account_key(name_state_account, &name_state_key)?;
+    msg!("name state key ok");
     let name_state = 
         NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
     
@@ -141,7 +141,6 @@ pub fn process_settle_auction<'a, 'b: 'a>(
     msg!("settle man right");
 
     let hashed_name = get_hashed_name(&params.name);
-
     let (name_account_key, _) = get_seeds_and_key(
         accounts.naming_service_program.key, 
         get_hashed_name(&params.name), 
@@ -152,7 +151,6 @@ pub fn process_settle_auction<'a, 'b: 'a>(
     msg!("name account key ok");
 
     let hashed_reverse_lookup = get_hashed_name(&name_account_key.to_string());
-
     let (reverse_lookup_account_key, _) = get_seeds_and_key(
         accounts.naming_service_program.key,
         hashed_reverse_lookup.clone(),
@@ -161,43 +159,10 @@ pub fn process_settle_auction<'a, 'b: 'a>(
     );
     check_account_key(accounts.reverse_lookup, &reverse_lookup_account_key)?;
     msg!("reverse account key ok");
-
-    //auction state
-    let name_state_account = accounts.domain_state_account;
-    let (name_state_key, _) = get_seeds_and_key(
-        &crate::ID, 
-        get_hashed_name(&params.name), 
-        Some(&central_state::KEY), 
-        Some(accounts.root_domain.key)
-    );
-    check_account_key(name_state_account, &name_state_key)?;
-    msg!("name state key ok");
-
-    let vault = accounts.vault;
-    let (vault_key, _) = get_seeds_and_key(
-        &crate::ID, 
-        get_hashed_name("vault"), 
-        Some(&central_state::KEY), 
-        Some(&central_state::KEY)
-    );
-    check_account_key(vault, &vault_key)?;
-    msg!("vault key ok");
     
     // transfer back the deposit
     let fee_payer = accounts.fee_payer;
-    let back_deposit = get_sol_price(accounts.pyth_feed_account, AUCTION_DEPOSIT)?;
-    invoke(&system_instruction::transfer(
-        accounts.vault.key, accounts.fee_payer.key, back_deposit), 
-        &[
-            vault.clone(),
-            fee_payer.clone(),
-            accounts.system_program.clone(),
-        ]
-    )?;
-    msg!("return deposit ok");
 
-    // transfer to referrer
-    let mut vault_percent = 100;
     let price = get_sol_price(accounts.pyth_feed_account, name_state.highest_price)?;
     
     invoke(&system_instruction::transfer(
@@ -208,7 +173,6 @@ pub fn process_settle_auction<'a, 'b: 'a>(
             accounts.system_program.clone(),
         ]
     )?;
-    vault_percent -= 40;
     msg!("transfer to referrer one ok");
 
     if let Some(refferrer_two) = accounts.referrer_two {
@@ -220,7 +184,6 @@ pub fn process_settle_auction<'a, 'b: 'a>(
                 accounts.system_program.clone(),
             ]
         )?;
-        vault_percent -= 30;
     }
     msg!("transfer to referrer two ok");
 
@@ -233,30 +196,8 @@ pub fn process_settle_auction<'a, 'b: 'a>(
                 accounts.system_program.clone(),
             ]
         )?;
-        vault_percent -= 20;
     }
     msg!("transfer to referrer three ok");
-
-    invoke(&system_instruction::transfer(
-        fee_payer.key, accounts.state_rent_payer.key, price * 5 / 100), 
-        &[
-            fee_payer.clone(),
-            accounts.state_rent_payer.clone(),
-            accounts.system_program.clone(),
-        ]
-    )?;
-    vault_percent -= 5;
-    msg!("transfer to rent payer ok");
-
-    invoke(&system_instruction::transfer(
-        fee_payer.key, vault.key, price * vault_percent / 100), 
-        &[
-            fee_payer.clone(),
-            vault.clone(),
-            accounts.system_program.clone(),
-        ]
-    )?;
-    msg!("transfer to vault ok");
 
     let central_state_signer_seeds: &[&[u8]] = &[&_program_id.to_bytes(), &[central_state::NONCE]];
     // cpi create domain

@@ -2311,9 +2311,9 @@ dependencies = [
 
 [[package]]
 name = "web3-utils"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "320e2f4cbaa09e1e7ee1eb017fa3ae16756478bdaacfef49e5d831d344f763fd"
+checksum = "3f3075b8b8c8e87dd5a2d9fc0cf2c5cb7853ef78ad3e7d0c35b8d327375c1e57"
 dependencies = [
  "borsh 0.10.4",
  "bytemuck",

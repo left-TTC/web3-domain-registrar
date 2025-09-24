@@ -15,7 +15,7 @@ use solana_system_interface::instruction as system_instruction;
 
 use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
     state::{write_data, NameStateRecordHeader, ReferrerRecordHeader}, 
-    utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, AUCTION_DEPOSIT, START_PRICE, TIME}
+    utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, START_PRICE, TIME}
 };
 
 
@@ -58,6 +58,8 @@ pub struct Accounts<'a, T> {
     /// vault
     #[cons(writable)]
     pub vault: &'a T,
+    /// referrer's refferrer record account
+    pub superior_referrer_record: Option<&'a T>,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -78,6 +80,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             referrer_account: next_account_info(accounts_iter)?,
             referrer_record_account: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
+            superior_referrer_record: accounts_iter.next(),
         })
     }
 
@@ -96,7 +99,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         // frist: register a initial domain name => 
         //          domain state --> sys
         //          domain name --> sys
-        //  second: register a already registered account =>
+        // second: register a already registered account =>
         //          domain state --> register
         //          domain name --> name service
 
@@ -130,27 +133,58 @@ pub fn process_start_name<'a, 'b: 'a>(
         msg!("domain contains invalid puncation");
         return Err(ProgramError::InvalidArgument);
     }
-    if params.price_usd < START_PRICE {
-        msg!("invalid bidding");
-        return Err(ProgramError::InvalidArgument);
-    }
     msg!("name: {}", params.name);
 
     // the referreer record account
     let referrer_record_account = accounts.referrer_record_account;
     let (referrer_record, referrer_seeds) = get_seeds_and_key(
         &crate::ID, 
-        get_hashed_name(&accounts.fee_payer.clone().key.to_string()), 
+        get_hashed_name(&accounts.fee_payer.key.to_string()), 
         Some(&crate::ID), 
         Some(&crate::ID),
     );
     check_account_key(referrer_record_account, &referrer_record)?;
+    msg!("payer's refferrer record account ok");
 
     let rent = Rent::from_account_info(accounts.rent_sysvar)?;
 
+    let vault = accounts.vault;
+    let (vault_key, _) = get_seeds_and_key(
+        &crate::ID, 
+        get_hashed_name("vault"), 
+        Some(&central_state::KEY), 
+        Some(&central_state::KEY)
+    );
+    check_account_key(vault, &vault_key)?;
+    msg!("vault ok");
+
     if referrer_record_account.data_len() == 0 {
-        // usr init 
+        
+        msg!("payer's referrer record account need to be intialized");
+
         let referrer_record_lamports = rent.minimum_balance(ReferrerRecordHeader::LEN);
+
+        if accounts.referrer_account.key != &vault_key {
+            msg!("payer use other's invitation");
+            if let Some(superior_refferrer) = accounts.superior_referrer_record {
+                let (superior_refferrer_key, _) = get_seeds_and_key(
+                    &crate::ID, 
+                    get_hashed_name(&accounts.referrer_account.key.to_string()), 
+                    Some(&crate::ID), 
+                    Some(&crate::ID)
+                );
+                check_account_key(accounts.referrer_account, &superior_refferrer_key)?;
+
+                msg!("refferr's refferrer record account ok");
+                
+                let _state =  
+                    ReferrerRecordHeader::unpack_from_slice(&superior_refferrer.data.borrow())?;
+                msg!("refeerrer's refferrer is valid");
+            } else {
+                msg!("you should use the default key"); 
+                return Err(ProgramError::InvalidArgument);
+            }
+        }
 
         invoke(
         &system_instruction::transfer(
@@ -176,6 +210,8 @@ pub fn process_start_name<'a, 'b: 'a>(
             &[accounts.referrer_record_account.clone(), accounts.system_program.clone()],
             &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
         )?;
+
+        msg!("create payer's refferrer record account");
     }else {
         let referrer_data = 
             ReferrerRecordHeader::unpack_from_slice(&referrer_record_account.data.borrow())?;
@@ -202,21 +238,27 @@ pub fn process_start_name<'a, 'b: 'a>(
         Some(accounts.root_domain.key)
     );
     check_account_key(name_state_account, &name_state_key)?;
+    msg!("name state ok");
 
-    let vault = accounts.vault;
-    let (vault_key, _) = get_seeds_and_key(
-        &crate::ID, 
-        get_hashed_name("vault"), 
-        Some(&central_state::KEY), 
-        Some(&central_state::KEY)
-    );
-    check_account_key(vault, &vault_key)?;
+    let mut deposit = 
+        get_sol_price(accounts.pyth_feed_account, params.price_usd * 1 / 10)?; 
+    msg!("caculate the domain's deposit: {:?}", deposit);
 
     // initiate or start twice auction;
     if name_state_account.data_is_empty() {
-        //initiate
+        
+        msg!("this domain is the frist time auction");
+
         let rent = Rent::from_account_info(accounts.rent_sysvar)?;
         let name_state_lamports = rent.minimum_balance(NameStateRecordHeader::LEN);
+
+        deposit -= name_state_lamports;
+        msg!("sub the name state rent, deposit: {:?}", deposit);
+
+        if params.price_usd != START_PRICE {
+            msg!("error start price");
+            return Err(ProgramError::InvalidArgument);
+        }
 
         invoke(
         &system_instruction::transfer(
@@ -243,13 +285,14 @@ pub fn process_start_name<'a, 'b: 'a>(
 
         let first_name_state_record = NameStateRecordHeader::new(
             accounts.fee_payer.key, 
-            accounts.fee_payer.key, 
             Clock::get()?.unix_timestamp, 
             params.price_usd
         );
         first_name_state_record.pack_into_slice(& mut name_state_account.data.borrow_mut());
     } else {
         // Second or subsequent auctions
+        msg!("Second or subsequent auctions");
+        
         let name_state_data = 
             NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
         if check_state_time(name_state_data.update_time)? != TIME::RESALE {
@@ -268,13 +311,12 @@ pub fn process_start_name<'a, 'b: 'a>(
         let highest_bidder = accounts.fee_payer.key.to_bytes();
         write_data(name_state_account, &highest_bidder, 0);
         let start_time = get_now_time()?.to_le_bytes();
-        write_data(name_state_account, &start_time, 64);
+        write_data(name_state_account, &start_time, 32);
         let highest_price = params.price_usd.to_le_bytes();
-        write_data(name_state_account, &highest_price, 72);
+        write_data(name_state_account, &highest_price, 40);
     }
 
-    let deposit = 
-    get_sol_price(accounts.pyth_feed_account, AUCTION_DEPOSIT)?; 
+    
     invoke(
         &system_instruction::transfer(
             accounts.fee_payer.key, &vault_key, deposit), 

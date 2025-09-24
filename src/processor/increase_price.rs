@@ -22,7 +22,7 @@ use web3_domain_name_service::{utils::get_seeds_and_key};
 
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::{write_data, NameStateRecordHeader}, utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, AUCTION_DEPOSIT, TIME}};
+use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::{write_data, NameStateRecordHeader}, utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, TIME}};
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
@@ -53,6 +53,9 @@ pub struct Accounts<'a, T> {
     /// last bidder
     #[cons(writable)]
     pub last_bidder: &'a T,
+    /// the vault
+    #[cons(writable)]
+    pub vault: &'a T,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -68,6 +71,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             fee_payer: next_account_info(accounts_iter)?,
             pyth_feed_account: next_account_info(accounts_iter)?,
             last_bidder: next_account_info(accounts_iter)?,
+            vault: next_account_info(accounts_iter)?,
         })
     }
 
@@ -100,6 +104,14 @@ pub fn process_increase_price<'a, 'b: 'a>(
     accounts.check()?;
 
     let name_state_account = accounts.domain_state_account;
+    //auction state
+    let (name_state_key, _) = get_seeds_and_key(
+        &crate::ID, 
+        get_hashed_name(&params.name), 
+        Some(&central_state::KEY), 
+        Some(accounts.root_domain.key)
+    );
+    check_account_key(name_state_account, &name_state_key)?;
     let name_state = 
         NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
     
@@ -108,24 +120,29 @@ pub fn process_increase_price<'a, 'b: 'a>(
         return Err(ProgramError::InvalidArgument);
     }
 
-    if params.my_price <= name_state.highest_price{
+    if params.my_price <= name_state.highest_price + 10000{
         msg!("You should bid more than the original bid");
         return Err(ProgramError::InvalidArgument);
     }
 
-    //auction state
-    let name_state_account = accounts.domain_state_account;
-    let (name_state_key, _) = get_seeds_and_key(
+    let vault = accounts.vault;
+    let (vault_key, _) = get_seeds_and_key(
         &crate::ID, 
-        get_hashed_name(&params.name), 
+        get_hashed_name("vault"), 
         Some(&central_state::KEY), 
-        Some(accounts.root_domain.key)
+        Some(&central_state::KEY)
     );
-    check_account_key(name_state_account, &name_state_key)?;
+    check_account_key(vault, &vault_key)?;
+
+    let mut deposit = 
+        get_sol_price(accounts.pyth_feed_account, params.my_price * 1 / 10)?;
     
-    // transfer back the deposit
     let back_deposit = 
-        get_sol_price(accounts.pyth_feed_account, AUCTION_DEPOSIT)?;
+        get_sol_price(accounts.pyth_feed_account, name_state.highest_price * 1 / 10)?;
+
+    deposit -= back_deposit;
+
+    // transfer back the deposit
     invoke(&system_instruction::transfer(
         accounts.fee_payer.key, accounts.last_bidder.key, back_deposit), 
         &[
@@ -134,14 +151,23 @@ pub fn process_increase_price<'a, 'b: 'a>(
             accounts.system_program.clone(),
         ]
     )?;
+    //transfer the increased part to vault
+    invoke(&system_instruction::transfer(
+        accounts.fee_payer.key, &vault_key, deposit), 
+        &[
+            accounts.fee_payer.clone(),
+            accounts.vault.clone(),
+            accounts.system_program.clone(),
+        ]
+    )?;
 
     write_data(accounts.domain_state_account, &accounts.fee_payer.key.to_bytes(), 0);
 
     let update_time = get_now_time()?;
-    write_data(accounts.domain_state_account, &update_time.to_le_bytes(), 64);
+    write_data(accounts.domain_state_account, &update_time.to_le_bytes(), 32);
     
     let new_price: u64 = name_state.highest_price + params.my_price;
-    write_data(accounts.domain_state_account, &new_price.to_le_bytes(), 72);
+    write_data(accounts.domain_state_account, &new_price.to_le_bytes(), 40);
 
     Ok(())
 }

@@ -30,10 +30,10 @@ impl RootStateRecordHeader {
         }
     }
 
-    pub fn get_name(&self) -> String {
-        let end = self.name.iter().position(|&c| c == 0).unwrap_or(self.name.len());
-        String::from_utf8_lossy(&self.name[..end]).to_string()
-    }
+    // pub fn get_name(&self) -> String {
+    //     let end = self.name.iter().position(|&c| c == 0).unwrap_or(self.name.len());
+    //     String::from_utf8_lossy(&self.name[..end]).to_string()
+    // }
 }
 
 impl Pack for RootStateRecordHeader {

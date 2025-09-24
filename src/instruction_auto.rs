@@ -12,5 +12,6 @@ pub enum ProgramInstruction {
     IncreasePrice,
     CreateName,
     StartProject,
+    ConfirmRoot,
 }
 

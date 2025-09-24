@@ -6,12 +6,12 @@ use solana_program::{
 #[cfg(not(feature = "devnet"))]
 pub const AUCTION_TIME_LIMIT: i64 = 259200;
 #[cfg(feature = "devnet")]
-pub const AUCTION_TIME_LIMIT: i64 = 180; // 3min
+pub const AUCTION_TIME_LIMIT: i64 = 2400; // 4min
 
 #[cfg(not(feature = "devnet"))]
 pub const SETTLE_TIME_LIMIT: i64 = 604800;
 #[cfg(feature = "devnet")]
-pub const SETTLE_TIME_LIMIT: i64 = 180; // 3min
+pub const SETTLE_TIME_LIMIT: i64 = 2400; // 3min
 
 #[derive(PartialEq)]
 pub enum TIME {

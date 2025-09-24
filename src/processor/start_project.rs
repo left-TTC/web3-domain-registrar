@@ -158,7 +158,6 @@ pub fn process_start_project(
         accounts.central_state,
         hashed_web3,
         rent.minimum_balance(NameRecordHeader::LEN),
-        &vault_seeds
     )?;
 
     let central_state_signer_seeds: &[&[u8]] = &[&crate::ID.to_bytes(), &[central_state::NONCE]];
