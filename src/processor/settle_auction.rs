@@ -18,6 +18,8 @@ use solana_system_interface::instruction as system_instruction;
 
 use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, cpi::Cpi, state::NameStateRecordHeader, utils::{check_state_time, get_hashed_name, get_sol_price, TIME}};
 
+pub mod initialize;
+pub mod more;
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
@@ -82,8 +84,8 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             pyth_feed_account: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
             referrer_one: next_account_info(accounts_iter)?,
-            referrer_two: accounts_iter.next(),
-            referrer_three: accounts_iter.next(),
+            referrer_two: next_account_info(accounts_iter).ok(),
+            referrer_three: next_account_info(accounts_iter).ok(),
         })
     }
 

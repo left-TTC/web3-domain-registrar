@@ -79,9 +79,6 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         check_account_key(accounts.central_state, &central_state::KEY)?;
         check_account_key(accounts.rent_sysvar, &sysvar::rent::ID)?;
 
-        // Check owners
-        check_account_owner(accounts.vault, &SYSTEM_ID)?;
-
         // Check signer
         check_signer(accounts.administrator)?;
 
@@ -132,20 +129,36 @@ pub fn process_start_project(
     check_account_key(vault, &vault_key)?;
     msg!("check vault ok");
 
-    invoke(
-    &system_instruction::transfer(
-        accounts.administrator.key, accounts.vault.key, PROJECT_START), 
-        &[
-            accounts.administrator.clone(),
-            vault.clone(),
-            accounts.system_program.clone(),
-        ],
-    )?;
+    // invoke(
+    // &system_instruction::transfer(
+    //     accounts.administrator.key, accounts.vault.key, PROJECT_START), 
+    //     &[
+    //         accounts.administrator.clone(),
+    //         vault.clone(),
+    //         accounts.system_program.clone(),
+    //     ],
+    // )?;
+
+    // invoke_signed(
+    //     &system_instruction::assign(&vault_key, &crate::ID),
+    //     &[accounts.vault.clone(), accounts.system_program.clone()],
+    //     &[&vault_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+    // )?;
 
     invoke_signed(
-        &system_instruction::assign(&vault_key, &crate::ID),
-        &[accounts.vault.clone(), accounts.system_program.clone()],
-        &[&vault_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+        &system_instruction::create_account(
+            accounts.administrator.key, 
+            &vault_key, 
+            PROJECT_START, 
+            0, 
+            &crate::ID
+        ), 
+        &[
+            accounts.administrator.clone(),
+            accounts.vault.clone(),
+            accounts.system_program.clone(),
+        ], 
+        &[&vault_seeds.chunks(32).collect::<Vec<&[u8]>>()]
     )?;
 
     let rent = Rent::from_account_info(accounts.rent_sysvar)?;

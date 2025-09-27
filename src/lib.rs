@@ -15,7 +15,7 @@ pub use error::Error;
 declare_id_with_central_state!("jCebN34bUfdeUYJT13J1yG16XWQpt5PDx6Mse9GUqhR");
 
 #[cfg(feature = "devnet")]
-declare_id_with_central_state!("64Qy6UEMwuK1nqkrkW3H1qX9fMmJEoxdE1zwruKfvbyG");
+declare_id_with_central_state!("DXGawcWQTb1G3G1hSAYJ7H13MzMBAETHNhvu4Pvv6QHZ");
 
 
 #[cfg(feature = "devnet")]
@@ -24,7 +24,7 @@ pub mod constants {
     use solana_program::{pubkey, pubkey::Pubkey};
 
     //name service id: used to register domain
-    pub const WEB3_NAME_SERVICE: Pubkey = pubkey!("29CkJByNom4XprPhyntVis1jqjDzHHx43do4oYeDDQRL");
+    pub const WEB3_NAME_SERVICE: Pubkey = pubkey!("6drdeNVv4G33jUt18qN3GBeESN5yi4tsQv96ZYjw23Qg");
 
     pub const WSOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
 

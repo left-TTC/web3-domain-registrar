@@ -12,7 +12,7 @@ pub const CREATE_ROOT_TARGET: u64 = 500000000000;
 pub const CREATE_ROOT_TARGET: u64 = 20000000;
 
 // $0.99
-pub const START_PRICE: u64 = 990000;
+pub const START_PRICE: u64 = 1990000;
 
 pub const DEPOSIT_RATIO: f64 = 0.1;
 

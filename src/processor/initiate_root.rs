@@ -71,7 +71,8 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         check_account_key(accounts.system_program, &SYSTEM_ID)?;
         check_account_key(accounts.rent_sysvar, &sysvar::rent::ID)?;
 
-        // Check owners
+        msg!("lamports: {:?}", accounts.root_state_account.lamports());
+        msg!("owner: {:?}", accounts.root_state_account.owner);
         check_account_owner(accounts.root_state_account, &SYSTEM_ID)?;
 
         // Check signer
@@ -119,12 +120,8 @@ pub fn process_initiate_root(
 
     if root_state_account.data.borrow().len() > 0 {
         msg!("the root state account's length > 0");
-        let root_record_header = 
+        let _root_record_header = 
             RootStateRecordHeader::unpack_from_slice(&root_state_account.data.borrow())?;
-        if root_record_header.initiator != Pubkey::default() {
-            msg!("The given root account already created");
-            return Err(ProgramError::InvalidArgument);
-        }
     }
     msg!("root state account ok");
 
