@@ -2,12 +2,12 @@
 pub mod root_state;
 pub mod name_state;
 pub mod reverse_lookup;
-pub mod referrer_record;
+pub mod refferrer_record;
 
 pub use root_state::*;
 pub use name_state::*;
 pub use reverse_lookup::*;
-pub use referrer_record::*;
+pub use refferrer_record::*;
 
 use solana_program::{
     account_info::AccountInfo,

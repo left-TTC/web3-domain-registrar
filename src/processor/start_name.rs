@@ -1,5 +1,7 @@
 //! Create a domain name and buy the ownership of a domain name
 
+use std::fmt::format;
+
 use web3_utils::{
     check::{check_account_key, check_account_owner, check_signer},
     BorshSize, InstructionsAccount,
@@ -14,7 +16,7 @@ use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key
 use solana_system_interface::instruction as system_instruction;
 
 use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
-    state::{NameStateRecordHeader, ReferrerRecordHeader, ReverseLookup}, 
+    state::{NameStateRecordHeader, refferrerRecordHeader, ReverseLookup}, 
     utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, START_PRICE, TIME}
 };
 
@@ -23,6 +25,7 @@ use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE},
 /// The required parameters for the `create` instruction
 pub struct Params {
     pub name: String,
+    pub root_name: String,
     pub price_decimals: u64,
 }
 
@@ -52,19 +55,19 @@ pub struct Accounts<'a, T> {
     pub pyth_feed_account: &'a T,
     /// The rent sysvar account
     pub rent_sysvar: &'a T,
-    /// the referrer -- must be unique
+    /// the refferrer -- must be unique
     /// one question: if usr want to get the profile from his next level
     /// he or she must keep the info is correspond
-    pub referrer_account: &'a T,
+    pub refferrer_account: &'a T,
     #[cons(writable)]
-    pub referrer_record_account: &'a T,
+    pub refferrer_record_account: &'a T,
     /// vault
     #[cons(writable)]
     pub vault: &'a T,
     /// rent payer
     pub rent_payer: &'a T,
-    /// referrer's refferrer record account
-    pub superior_referrer_record: Option<&'a T>,
+    /// refferrer's refferrer record account
+    pub superior_refferrer_record: Option<&'a T>,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -83,11 +86,11 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             fee_payer: next_account_info(accounts_iter)?,
             pyth_feed_account: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
-            referrer_account: next_account_info(accounts_iter)?,
-            referrer_record_account: next_account_info(accounts_iter)?,
+            refferrer_account: next_account_info(accounts_iter)?,
+            refferrer_record_account: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
             rent_payer: next_account_info(accounts_iter)?,
-            superior_referrer_record: next_account_info(accounts_iter).ok(),
+            superior_refferrer_record: next_account_info(accounts_iter).ok(),
         })
     }
 
@@ -143,14 +146,14 @@ pub fn process_start_name<'a, 'b: 'a>(
     msg!("name: {}", params.name);
 
     // the referreer record account
-    let referrer_record_account = accounts.referrer_record_account;
-    let (referrer_record, referrer_seeds) = get_seeds_and_key(
+    let refferrer_record_account = accounts.refferrer_record_account;
+    let (refferrer_record, refferrer_seeds) = get_seeds_and_key(
         &crate::ID, 
         get_hashed_name(&accounts.fee_payer.key.to_string()), 
         Some(&crate::ID), 
         Some(&crate::ID),
     );
-    check_account_key(referrer_record_account, &referrer_record)?;
+    check_account_key(refferrer_record_account, &refferrer_record)?;
     msg!("payer's refferrer record account ok");
 
     let rent = Rent::from_account_info(accounts.rent_sysvar)?;
@@ -165,72 +168,81 @@ pub fn process_start_name<'a, 'b: 'a>(
     check_account_key(vault, &vault_key)?;
     msg!("vault ok");
 
-    if referrer_record_account.data_len() == 0 {
+    if refferrer_record_account.data_len() == 0 {
         
-        msg!("payer's referrer record account need to be intialized");
+        msg!("payer's refferrer record account need to be intialized");
 
-        let referrer_record_lamports = rent.minimum_balance(ReferrerRecordHeader::LEN);
+        let refferrer_record_lamports = rent.minimum_balance(refferrerRecordHeader::LEN);
 
-        if accounts.referrer_account.key != &vault_key {
+        if accounts.refferrer_account.key != &vault_key {
             msg!("payer use other's invitation");
-            if let Some(superior_refferrer) = accounts.superior_referrer_record {
+            if let Some(superior_refferrer) = accounts.superior_refferrer_record {
                 let (superior_refferrer_key, _) = get_seeds_and_key(
                     &crate::ID, 
-                    get_hashed_name(&accounts.referrer_account.key.to_string()), 
+                    get_hashed_name(&accounts.refferrer_account.key.to_string()), 
                     Some(&crate::ID), 
                     Some(&crate::ID)
                 );
-                check_account_key(accounts.referrer_account, &superior_refferrer_key)?;
+                check_account_key(accounts.refferrer_account, &superior_refferrer_key)?;
 
                 msg!("refferr's refferrer record account ok");
                 
                 let _state =  
-                    ReferrerRecordHeader::unpack_from_slice(&superior_refferrer.data.borrow())?;
+                    refferrerRecordHeader::unpack_from_slice(&superior_refferrer.data.borrow())?;
                 msg!("refeerrer's refferrer is valid");
             } else {
-                msg!("you should use the default key"); 
+                msg!("you should provide your refferrer's refferrer record"); 
                 return Err(ProgramError::InvalidArgument);
             }
         }
 
         invoke(
         &system_instruction::transfer(
-            accounts.fee_payer.key, &referrer_record, referrer_record_lamports), 
+            accounts.fee_payer.key, &refferrer_record, refferrer_record_lamports), 
             &[
                 accounts.fee_payer.clone(),
-                accounts.referrer_record_account.clone(),
+                accounts.refferrer_record_account.clone(),
                 accounts.system_program.clone(),
             ],
         )?;
 
         invoke_signed(
             &system_instruction::allocate(
-                &referrer_record, 
-                ReferrerRecordHeader::LEN as u64
+                &refferrer_record, 
+                refferrerRecordHeader::LEN as u64
             ), 
-            &[accounts.referrer_record_account.clone(), accounts.system_program.clone()], 
-            &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+            &[accounts.refferrer_record_account.clone(), accounts.system_program.clone()], 
+            &[&refferrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
         )?;
 
         invoke_signed(
-            &system_instruction::assign(&referrer_record, &crate::ID),
-            &[accounts.referrer_record_account.clone(), accounts.system_program.clone()],
-            &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+            &system_instruction::assign(&refferrer_record, &crate::ID),
+            &[accounts.refferrer_record_account.clone(), accounts.system_program.clone()],
+            &[&refferrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
         )?;
 
         msg!("create payer's refferrer record account");
-        let mut data = accounts.referrer_record_account.data.borrow_mut();
-        data[..32].copy_from_slice(&accounts.referrer_account.key.to_bytes());
+        let mut data = accounts.refferrer_record_account.data.borrow_mut();
+        data[..32].copy_from_slice(&accounts.refferrer_account.key.to_bytes());
 
         msg!("write in refferrer record account");
     }else {
-        let referrer_data = 
-            ReferrerRecordHeader::unpack_from_slice(&referrer_record_account.data.borrow())?;
-        if &referrer_data.referrer_account != accounts.referrer_account.key {
+        let refferrer_data = 
+            refferrerRecordHeader::unpack_from_slice(&refferrer_record_account.data.borrow())?;
+        if &refferrer_data.refferrer_account != accounts.refferrer_account.key {
             msg!("regferrer is not unique");
             return Err(ProgramError::InvalidArgument);
         }
     }
+    
+    let (root_account_key, _) = get_seeds_and_key(
+        accounts.naming_service_program.key, 
+        get_hashed_name(&params.root_name), 
+        None, 
+        None
+    );
+    check_account_key(accounts.root_domain, &root_account_key)?;
+    msg!("root account ok");
 
     let (name_account_key, _) = get_seeds_and_key(
         accounts.naming_service_program.key, 
@@ -312,7 +324,8 @@ pub fn process_start_name<'a, 'b: 'a>(
         first_name_state_record.pack_into_slice(& mut name_state_account.data.borrow_mut());
         msg!("write name state ok");
 
-        let name_bytes = ReverseLookup { name: params.name }.try_to_vec().unwrap();
+        let name_bytes = ReverseLookup { name: format!("{}.{}", params.name, params.root_name) }.try_to_vec().unwrap();
+        msg!("reverse name {}", format!("{}.{}", params.name, params.root_name));
         invoke(
         &system_instruction::transfer(
             accounts.fee_payer.key, &name_state_reverse_key, name_state_lamports), 
@@ -331,7 +344,7 @@ pub fn process_start_name<'a, 'b: 'a>(
             &[&name_state_reverse_seed.chunks(32).collect::<Vec<&[u8]>>()],
         )?;
         invoke_signed(
-            &system_instruction::assign(&name_state_key, &crate::ID),
+            &system_instruction::assign(&name_state_reverse_key, &crate::ID),
             &[accounts.domain_state_reverse_account.clone(), accounts.system_program.clone()],
             &[&name_state_reverse_seed.chunks(32).collect::<Vec<&[u8]>>()],
         )?;
@@ -343,9 +356,6 @@ pub fn process_start_name<'a, 'b: 'a>(
     } else {
         // Second or subsequent auctions
         msg!("Second or subsequent auctions");
-
-        deposit = domain_start_price * 2 / 100;
-        msg!("less deposit: {:?}", deposit);
         
         let name_state_data = 
             NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
@@ -372,10 +382,25 @@ pub fn process_start_name<'a, 'b: 'a>(
 
         // Initiate if there is no auction status
         let domain_account_data = 
-            NameRecordHeader::unpack_from_slice(&accounts.domain_name_account.data.borrow())?;
-        if params.price_decimals < domain_account_data.custom_price {
-            msg!("poor");
-            return Err(ProgramError::InvalidArgument);
+            NameRecordHeader::unpack_from_slice(&accounts.domain_name_account.data.borrow());
+        
+        match domain_account_data {
+            Ok(data) => {
+                if params.price_decimals < data.custom_price {
+                    msg!("poor");
+                    return Err(ProgramError::InvalidArgument);
+                }
+                deposit = domain_start_price * 2 / 100;
+                msg!("have already created: {}", deposit);
+            }
+            Err(_) => {
+                msg!("this name account has been auctioned, but not created");
+                deposit = domain_start_price * 7 / 100;
+                if params.price_decimals != START_PRICE {
+                    msg!("error start price");
+                    return Err(ProgramError::InvalidArgument);
+                }
+            }
         }
 
         let new_record = NameStateRecordHeader::new(

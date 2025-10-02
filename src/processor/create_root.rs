@@ -16,7 +16,7 @@ use crate::{
     central_state, 
     constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
     state::{write_data, RootStateRecordHeader}, 
-    utils::{ get_hashed_name, get_seeds_and_keys, get_sol_price, CREATE_ROOT_TARGET}
+    utils::{ get_hashed_name, get_sol_price, CREATE_ROOT_TARGET}
 };
 
 use {
@@ -100,7 +100,7 @@ pub fn process_create_root(
     let accounts = Accounts::parse(accounts)?;
     msg!("parse ok");
 
-    let (vault, _) = get_seeds_and_keys(
+    let (vault, _) = get_seeds_and_key(
         &crate::ID, 
         get_hashed_name("vault"), 
         Some(&central_state::KEY), 

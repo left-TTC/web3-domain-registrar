@@ -129,22 +129,6 @@ pub fn process_start_project(
     check_account_key(vault, &vault_key)?;
     msg!("check vault ok");
 
-    // invoke(
-    // &system_instruction::transfer(
-    //     accounts.administrator.key, accounts.vault.key, PROJECT_START), 
-    //     &[
-    //         accounts.administrator.clone(),
-    //         vault.clone(),
-    //         accounts.system_program.clone(),
-    //     ],
-    // )?;
-
-    // invoke_signed(
-    //     &system_instruction::assign(&vault_key, &crate::ID),
-    //     &[accounts.vault.clone(), accounts.system_program.clone()],
-    //     &[&vault_seeds.chunks(32).collect::<Vec<&[u8]>>()],
-    // )?;
-
     invoke_signed(
         &system_instruction::create_account(
             accounts.administrator.key, 

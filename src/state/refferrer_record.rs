@@ -12,19 +12,19 @@ use solana_program::{
 
 
 #[derive(Clone,Debug, BorshSerialize, BorshDeserialize, PartialEq)]
-pub struct ReferrerRecordHeader {
-    pub referrer_account: Pubkey,
+pub struct refferrerRecordHeader {
+    pub refferrer_account: Pubkey,
 }
 
-impl Sealed for ReferrerRecordHeader {}
+impl Sealed for refferrerRecordHeader {}
 
-impl ReferrerRecordHeader {
-    pub fn new(referrer: Pubkey) -> Self {
-        Self { referrer_account: referrer }
+impl refferrerRecordHeader {
+    pub fn new(refferrer: Pubkey) -> Self {
+        Self { refferrer_account: refferrer }
     }
 }
 
-impl Pack for ReferrerRecordHeader {
+impl Pack for refferrerRecordHeader {
     const LEN: usize = 32;
 
     fn pack_into_slice(&self, dst: &mut [u8]) {
@@ -34,11 +34,11 @@ impl Pack for ReferrerRecordHeader {
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
         if src.len() != Self::LEN {
-            msg!("referrer record err");
+            msg!("refferrer record err");
             return Err(ProgramError::InvalidAccountData);
         }
         Ok(Self {
-            referrer_account: Pubkey::new_from_array(
+            refferrer_account: Pubkey::new_from_array(
                 <[u8; 32]>::try_from(src).map_err(|_| ProgramError::InvalidAccountData)?
             )
         })

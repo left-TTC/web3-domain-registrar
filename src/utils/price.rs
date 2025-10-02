@@ -26,3 +26,9 @@ pub fn get_sol_price(
     let clock = Clock::get()?;
     get_domain_price_sol(usd_price, sol_pyth_feed, &clock)
 }
+
+pub fn share(total: u64, percent: u64) -> Result<u64, ProgramError> {
+    total.checked_mul(percent)
+         .and_then(|v| v.checked_div(100))
+         .ok_or(ProgramError::InvalidArgument)
+}

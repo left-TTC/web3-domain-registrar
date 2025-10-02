@@ -19,7 +19,7 @@ use solana_system_interface::instruction as system_instruction;
 use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, cpi::Cpi, state::NameStateRecordHeader, utils::{check_state_time, get_hashed_name, get_sol_price, TIME}};
 
 pub mod initialize;
-pub mod more;
+pub mod repeat;
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
@@ -55,16 +55,24 @@ pub struct Accounts<'a, T> {
     pub pyth_feed_account: &'a T,
     /// rent sysvar
     pub rent_sysvar: &'a T,
-    /// buyer's referrer -- we named A
+    /// name account owner -- The initialized domain name can be arbitrary
+    /// Domain names auctioned more than twice must be the same as in the records
+    pub name_account_owner: &'a T,
+    /// buyer's refferrer record
+    pub refferrer_record: &'a T,
+    /// buyer's refferrer -- we named A
     #[cons(writable)]
-    pub referrer_one: &'a T,
+    pub refferrer_a: &'a T,
+    /// A's refferrer record
+    pub refferrer_a_record: Option<&'a T>,
     /// A's refferrer -- named B
     #[cons(writable)]
-    pub referrer_two: Option<&'a T>,
-    /// B's referrer -- named C
+    pub refferrer_b: Option<&'a T>,
+    /// B's refferrer record
+    pub refferrer_b_record: Option<&'a T>,
+    /// B's refferrer -- named C
     #[cons(writable)]
-    pub referrer_three: Option<&'a T>,
-    
+    pub refferrer_c: Option<&'a T>,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -83,9 +91,13 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             fee_payer: next_account_info(accounts_iter)?,
             pyth_feed_account: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
-            referrer_one: next_account_info(accounts_iter)?,
-            referrer_two: next_account_info(accounts_iter).ok(),
-            referrer_three: next_account_info(accounts_iter).ok(),
+            name_account_owner: next_account_info(accounts_iter)?,
+            refferrer_record: next_account_info(accounts_iter)?,
+            refferrer_a: next_account_info(accounts_iter)?,
+            refferrer_a_record: next_account_info(accounts_iter).ok(),
+            refferrer_b: next_account_info(accounts_iter).ok(),
+            refferrer_b_record: next_account_info(accounts_iter).ok(),
+            refferrer_c: next_account_info(accounts_iter).ok(),
         })
     }
 
@@ -97,13 +109,8 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         msg!("system_program id ok");
         check_account_key(self.rent_sysvar, &sysvar::rent::ID)?;
 
-
-        // Check ownership
-        check_account_owner(self.name, &SYSTEM_ID)
-            .map_err(|_| crate::Error::AlreadyRegistered)?;
         check_account_owner(self.root_domain, &WEB3_NAME_SERVICE)?;
-        check_account_owner(self.domain_state_account, &crate::ID)
-            .map_err(|_| crate::Error::AlreadyRegistered)?;
+        check_account_owner(self.domain_state_account, &crate::ID)?;
 
         check_signer(self.fee_payer).unwrap();
         msg!("fee_payer signature ok");
@@ -123,9 +130,10 @@ pub fn process_settle_auction<'a, 'b: 'a>(
     accounts.check()?;
 
     let name_state_account = accounts.domain_state_account;
+    let hased_name = get_hashed_name(&params.name);
     let (name_state_key, _) = get_seeds_and_key(
         &crate::ID, 
-        get_hashed_name(&params.name), 
+        hased_name.clone(), 
         Some(&central_state::KEY), 
         Some(accounts.root_domain.key)
     );
@@ -142,14 +150,14 @@ pub fn process_settle_auction<'a, 'b: 'a>(
     check_account_key(accounts.fee_payer, &name_state.highest_bidder)?;
     msg!("settle man right");
 
-    let hashed_name = get_hashed_name(&params.name);
+    let domain_name_account = accounts.name;
     let (name_account_key, _) = get_seeds_and_key(
         accounts.naming_service_program.key, 
-        get_hashed_name(&params.name), 
+        hased_name.clone(), 
         None, 
         Some(accounts.root_domain.key)
     );
-    check_account_key(accounts.name, &name_account_key)?;
+    check_account_key(domain_name_account, &name_account_key)?;
     msg!("name account key ok");
 
     let hashed_reverse_lookup = get_hashed_name(&name_account_key.to_string());
@@ -161,77 +169,33 @@ pub fn process_settle_auction<'a, 'b: 'a>(
     );
     check_account_key(accounts.reverse_lookup, &reverse_lookup_account_key)?;
     msg!("reverse account key ok");
-    
-    // transfer back the deposit
-    let fee_payer = accounts.fee_payer;
 
+    // have already paid 10% or 5% -- check name account to distinguish between these two cases
     let price = get_sol_price(accounts.pyth_feed_account, name_state.highest_price)?;
-    
-    invoke(&system_instruction::transfer(
-        fee_payer.key, accounts.referrer_one.key, price * 40 / 100), 
-        &[
-            fee_payer.clone(),
-            accounts.referrer_one.clone(),
-            accounts.system_program.clone(),
-        ]
-    )?;
-    msg!("transfer to referrer one ok");
 
-    if let Some(refferrer_two) = accounts.referrer_two {
-        invoke(&system_instruction::transfer(
-            fee_payer.key, refferrer_two.key, price * 30 / 100), 
-            &[
-                fee_payer.clone(),
-                refferrer_two.clone(),
-                accounts.system_program.clone(),
-            ]
-        )?;
-    }
-    msg!("transfer to referrer two ok");
+    let name_record = 
+        NameRecordHeader::unpack_from_slice(&domain_name_account.data.borrow());
 
-    if let Some(refferrer_three) = accounts.referrer_three {
-        invoke(&system_instruction::transfer(
-            fee_payer.key, refferrer_three.key, price * 20 / 100), 
-            &[
-                fee_payer.clone(),
-                refferrer_three.clone(),
-                accounts.system_program.clone(),
-            ]
-        )?;
-    }
-    msg!("transfer to referrer three ok");
-
-    let central_state_signer_seeds: &[&[u8]] = &[&_program_id.to_bytes(), &[central_state::NONCE]];
-    // cpi create domain
-    let rent = Rent::from_account_info(accounts.rent_sysvar)?;
-
-    Cpi::create_name_account(
-        accounts.naming_service_program, 
-        accounts.system_program, 
-        accounts.name, 
-        accounts.fee_payer, 
-        accounts.root_domain, 
-        accounts.central_state,
-        hashed_name,
-        rent.minimum_balance(NameRecordHeader::LEN as usize),
-        central_state_signer_seeds,
-        params.custom_price,
-    )?;
-
-    if accounts.reverse_lookup.data_len() == 0 {
-        Cpi::create_reverse_lookup_account(
-            accounts.naming_service_program, 
-            accounts.system_program, 
-            accounts.reverse_lookup, 
-            accounts.fee_payer, 
-            params.name, 
-            hashed_reverse_lookup, 
-            accounts.central_state, 
-            accounts.rent_sysvar, 
-            central_state_signer_seeds, 
-            None, 
-            None
-        )?;
+    match name_record {
+        // buy from others -- means deposit ratio is 5%
+        Ok(record_data) =>{
+            self::repeat::repeat_settle(
+                accounts, 
+                params, 
+                record_data, 
+                name_state, 
+                price, 
+            )?;
+        }
+        Err(_) => {
+            self::initialize::initialize_settle(
+                accounts, 
+                params, 
+                price, 
+                hased_name, 
+                hashed_reverse_lookup
+            )?;
+        }
     }
 
     Ok(())

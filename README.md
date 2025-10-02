@@ -23,16 +23,38 @@ cargo build-sbf
 |WEB3_REGISTRAR  |       None        |       None        |   Root State Account |
 |WEB3_REGISTRAR |       Register_Central        |       Root Domain        |   Name State Account |
 |WEB3_REGISTRAR  |       Register_Central        |       Register_Central        |   Vault |
-|WEB3_REGISTRAR  |       WEB3_REGISTRAR        |       WEB3_REGISTRAR        |   Referrer Record |
+|WEB3_REGISTRAR  |       WEB3_REGISTRAR        |       WEB3_REGISTRAR        |   refferrer Record |
 |WEB3_REGISTRAR  |       WEB3_REGISTRAR        |       None        |   Name State Reverse |
+
+> About account structure
+
+|Account Type|Param 1|Param 2|Param 3|Param 4|Size|
+|---|---|---|---|---|---|
+|Name(root)|Parent Name(None)|owner(centarl registrar)|class(None)|custom price(meaningless)|104|
+|Name(reverse)|Parent Name(None)|owner(centarl registrar)|class(centarl registrar)|custom price(meaningless)|104 + name.len|
+|Name(common)|Parent Name(Root)|owner(usr)|class(None)|custom price(resale)|104|
+|Name(reverse)|Parent Name(None)|owner(centarl registrar)|class(centarl registrar)|custom price(meaningless)|104 + name.len|
 
 ## Profit Sharing Ideas
 
 ### 1. Refferer
 Every usr will set a refereer 
-> We plan to distribute 90% of the profits to the referrers in the next three levels（only create）.
+> We plan to distribute 90% of the profits to the refferrers in the next three levels (only create).
+#### Specific profit sharing ratio
+> In this case, we assume that the buyer's name is A, and A's refferrer is B, B's refferrer is C, C's is D
+
+##### Initial domain name creation
+|Name|Expenditure|Income|Responsibility|
+|---|---|---|---|
+|A|ausume that X(now is $1.99)|None|pay for domain name|
+|B|None|x * 40%|get referral fees|
+|C|None|x * 30%|get referral fees|
+|D|None|x * 20%|get referral fees|
 
 ### 2. rent exemption
 When create a domain auction state, the sponsor needs to pay the rent exemption, but when the domain is twice auctioned, rent exemption has beed paid by the sponor, it's unfair
-> I plan to distribute 2% of the profits to the sponor for his distribution in every auction, and we will get the 1%  
+> We will distribute 3% of the profits to the sponor for his distribution in every auction
+- As long as the transaction is initiated, there will be profit regardless of whether it is successful or not
+- No maximium limitation
 
+ 

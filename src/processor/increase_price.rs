@@ -22,7 +22,7 @@ use web3_domain_name_service::{utils::get_seeds_and_key};
 
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::{write_data, NameStateRecordHeader}, utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, TIME}};
+use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::{NameStateRecordHeader}, utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, TIME}};
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
@@ -35,8 +35,6 @@ pub struct Params {
 #[derive(InstructionsAccount)]
 /// The required accounts for the `create` instruction
 pub struct Accounts<'a, T> {
-    /// The naming service program ID
-    pub naming_service_program: &'a T,
     /// The root domain account       
     pub root_domain: &'a T,
     /// The domain auction state account
@@ -49,7 +47,7 @@ pub struct Accounts<'a, T> {
     pub fee_payer: &'a T,
     /// The Pyth feed account
     pub pyth_feed_account: &'a T,
-    // it's not necessary to confirm the referrer
+    // it's not necessary to confirm the refferrer
     /// last bidder
     #[cons(writable)]
     pub last_bidder: &'a T,
@@ -64,7 +62,6 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     ) -> Result<Self, ProgramError> {
         let accounts_iter = &mut accounts.iter();
         Ok(Accounts {
-            naming_service_program: next_account_info(accounts_iter)?,
             root_domain: next_account_info(accounts_iter)?,
             domain_state_account: next_account_info(accounts_iter)?,
             system_program: next_account_info(accounts_iter)?,
@@ -77,8 +74,6 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
     pub fn check(&self) -> Result<(), ProgramError> {
 
-        check_account_key(self.naming_service_program, &WEB3_NAME_SERVICE).unwrap();
-        msg!("nameservice id ok");
         check_account_key(self.system_program, &SYSTEM_ID).unwrap();
         msg!("system_program id ok");
 
@@ -120,7 +115,7 @@ pub fn process_increase_price<'a, 'b: 'a>(
         return Err(ProgramError::InvalidArgument);
     }
 
-    if params.my_price <= name_state.highest_price + 10000{
+    if params.my_price < name_state.highest_price + 100000{
         msg!("You should bid more than the original bid");
         return Err(ProgramError::InvalidArgument);
     }
@@ -161,13 +156,14 @@ pub fn process_increase_price<'a, 'b: 'a>(
         ]
     )?;
 
-    write_data(accounts.domain_state_account, &accounts.fee_payer.key.to_bytes(), 0);
-
-    let update_time = get_now_time()?;
-    write_data(accounts.domain_state_account, &update_time.to_le_bytes(), 32);
-    
-    let new_price: u64 = name_state.highest_price + params.my_price;
-    write_data(accounts.domain_state_account, &new_price.to_le_bytes(), 40);
+    let new_record = NameStateRecordHeader::new(
+        accounts.fee_payer.key, 
+        &name_state.rent_payer, 
+        get_now_time()?, 
+        params.my_price,
+    );
+    NameStateRecordHeader::pack(new_record, &mut name_state_account.data.borrow_mut())?;
+    msg!("update the name record ok");
 
     Ok(())
 }

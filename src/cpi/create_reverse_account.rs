@@ -69,11 +69,11 @@ impl Cpi {
 
         let write_name_instruction = web3_domain_name_service::instruction::update(
             *name_service_program.key,
-            0,
+            // jump over custom price space
+            8,
             name_bytes,
             *reverse_lookup_account.key,
             *authority_and_reverse_owner.key,
-            parent_name_opt.map(|a| *a.key),
         )?;
 
         invoke_signed(&write_name_instruction, &accounts_update, &[signer_seeds])?;
