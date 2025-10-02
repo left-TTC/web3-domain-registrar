@@ -13,5 +13,6 @@ pub enum ProgramInstruction {
     CreateName,
     StartProject,
     ConfirmRoot,
+    Extract,
 }
 

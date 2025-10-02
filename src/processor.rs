@@ -60,9 +60,9 @@ impl Processor {
             }
             ProgramInstruction::CreateName => {
                 msg!("Instruction: settle and create an domain name");
-                let params = increase_price::Params::try_from_slice(instruction_data)
+                let params = settle_auction::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidArgument)?;
-                increase_price::process_increase_price(program_id, accounts, params)?;
+                settle_auction::process_settle_auction(program_id, accounts, params)?;
             }
             ProgramInstruction::StartProject => {
                 msg!("Instruction: start Project");
@@ -76,10 +76,8 @@ impl Processor {
                     .map_err(|_| ProgramError::InvalidArgument)?;
                 confirm_root_admin::process_confirm_root(program_id, accounts, params)?;
             }
-
-            _ => {
-                msg!("Instruction: Deprecated");
-                return Err(ProgramError::InvalidInstructionData);
+            ProgramInstruction::Extract => {
+                
             }
         }
 
