@@ -15,6 +15,7 @@ pub mod initiate_root;
 pub mod settle_auction;
 pub mod start_project;
 pub mod confirm_root_admin;
+pub mod extract;
 
 pub struct Processor {}
 
@@ -77,7 +78,7 @@ impl Processor {
                 confirm_root_admin::process_confirm_root(program_id, accounts, params)?;
             }
             ProgramInstruction::Extract => {
-                
+
             }
         }
 
