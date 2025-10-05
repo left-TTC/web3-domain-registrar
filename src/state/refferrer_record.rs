@@ -12,19 +12,19 @@ use solana_program::{
 
 
 #[derive(Clone,Debug, BorshSerialize, BorshDeserialize, PartialEq)]
-pub struct refferrerRecordHeader {
+pub struct RefferrerRecordHeader {
     pub refferrer_account: Pubkey,
 }
 
-impl Sealed for refferrerRecordHeader {}
+impl Sealed for RefferrerRecordHeader {}
 
-impl refferrerRecordHeader {
+impl RefferrerRecordHeader {
     pub fn new(refferrer: Pubkey) -> Self {
         Self { refferrer_account: refferrer }
     }
 }
 
-impl Pack for refferrerRecordHeader {
+impl Pack for RefferrerRecordHeader {
     const LEN: usize = 32;
 
     fn pack_into_slice(&self, dst: &mut [u8]) {

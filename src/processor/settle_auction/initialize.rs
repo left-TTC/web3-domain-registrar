@@ -7,7 +7,7 @@ use solana_system_interface::instruction as system_instruction;
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 use web3_utils::check::check_account_key;
 
-use crate::{central_state, cpi::Cpi, state::refferrerRecordHeader, utils::{get_hashed_name, share}};
+use crate::{central_state, cpi::Cpi, state::RefferrerRecordHeader, utils::{get_hashed_name, share}};
 
 pub fn initialize_settle(
     accounts: super::Accounts<'_, AccountInfo<'_>>,
@@ -34,7 +34,7 @@ pub fn initialize_settle(
     check_account_key(accounts.refferrer_record, &refferrer_record_key)?;
 
     let refferrer_usr_data = 
-        refferrerRecordHeader::unpack_from_slice(&accounts.refferrer_record.data.borrow())?;
+        RefferrerRecordHeader::unpack_from_slice(&accounts.refferrer_record.data.borrow())?;
 
     if &refferrer_usr_data.refferrer_account != accounts.refferrer_a.key{
         msg!("the refferrer one is error");
@@ -58,7 +58,7 @@ pub fn initialize_settle(
 
             // get recorded refferrer: B
             let a_record_data = 
-                refferrerRecordHeader::unpack_from_slice(&refferrer_a_record.data.borrow())?;
+                RefferrerRecordHeader::unpack_from_slice(&refferrer_a_record.data.borrow())?;
             
             if a_record_data.refferrer_account != vault_key {
                 if let Some(refferrer_b) = accounts.refferrer_b{
@@ -76,7 +76,7 @@ pub fn initialize_settle(
 
                         // get B's refferrer: C
                         let b_record_data = 
-                            refferrerRecordHeader::unpack_from_slice(&refferrer_b_record.data.borrow())?;
+                            RefferrerRecordHeader::unpack_from_slice(&refferrer_b_record.data.borrow())?;
 
                         if b_record_data.refferrer_account != vault_key {
                             if let Some(refferrer_c) = accounts.refferrer_c {
@@ -155,7 +155,7 @@ pub fn initialize_settle(
             accounts.system_program, 
             accounts.reverse_lookup, 
             accounts.fee_payer, 
-            params.name, 
+            params.domain_name, 
             hashed_reverse_lookup, 
             accounts.central_state, 
             accounts.rent_sysvar, 

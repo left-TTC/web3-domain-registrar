@@ -13,16 +13,16 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo}, 
     entrypoint::ProgramResult, 
     msg, 
-    program::invoke, 
+    program::{invoke, invoke_signed}, 
     program_error::ProgramError, 
     program_pack::Pack, 
-    pubkey::Pubkey, 
+    pubkey::Pubkey, rent::Rent, sysvar::Sysvar, 
 };
 use web3_domain_name_service::{utils::get_seeds_and_key};
 
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::{NameStateRecordHeader}, utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, TIME}};
+use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::{NameStateRecordHeader, RefferrerRecordHeader}, utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, TIME}};
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
@@ -30,6 +30,7 @@ use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::{Na
 pub struct Params {
     pub name: String,
     pub my_price: u64,
+    pub refferrer_key: Pubkey,
 }
 
 #[derive(InstructionsAccount)]
@@ -54,6 +55,14 @@ pub struct Accounts<'a, T> {
     /// the vault
     #[cons(writable)]
     pub vault: &'a T,
+    /// usr's refferrer record
+    /// we must check it, otherwise, some users may not have a referer in the end.
+    #[cons(writable)]
+    pub refferrer_record_account: &'a T,
+    /// refferrer's refferrer record account
+    pub superior_refferrer_record: Option<&'a T>,
+    /// if need create the refferrer record, we need the rent sysvar
+    pub rent: Option<&'a T>,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -69,6 +78,9 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             pyth_feed_account: next_account_info(accounts_iter)?,
             last_bidder: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
+            refferrer_record_account: next_account_info(accounts_iter)?,
+            superior_refferrer_record: next_account_info(accounts_iter).ok(),
+            rent: next_account_info(accounts_iter).ok(),
         })
     }
 
@@ -128,6 +140,92 @@ pub fn process_increase_price<'a, 'b: 'a>(
         Some(&central_state::KEY)
     );
     check_account_key(vault, &vault_key)?;
+
+    // the referreer record account
+    let refferrer_record_account = accounts.refferrer_record_account;
+    let (refferrer_record, refferrer_seeds) = get_seeds_and_key(
+        &crate::ID, 
+        get_hashed_name(&accounts.fee_payer.key.to_string()), 
+        Some(&crate::ID), 
+        Some(&crate::ID),
+    );
+    check_account_key(refferrer_record_account, &refferrer_record)?;
+    msg!("payer's refferrer record account ok");
+
+    if accounts.refferrer_record_account.data_len() == 0 {
+        msg!("new user, should init the refferrer account");
+
+        if let Some(rent_sysvar) = accounts.rent {
+            let rent = Rent::from_account_info(rent_sysvar)?;
+            let refferrer_record_lamports = rent.minimum_balance(RefferrerRecordHeader::LEN);
+
+            if params.refferrer_key != vault_key {
+                msg!("payer use other's invitation");
+                if let Some(superior_refferrer) = accounts.superior_refferrer_record {
+                    let (superior_refferrer_key, _) = get_seeds_and_key(
+                        &crate::ID, 
+                        get_hashed_name(&params.refferrer_key.to_string()), 
+                        Some(&crate::ID), 
+                        Some(&crate::ID)
+                    );
+                    check_account_key(superior_refferrer, &superior_refferrer_key)?;
+
+                    msg!("refferr's refferrer record account ok");
+                    
+                    let _state =  
+                        RefferrerRecordHeader::unpack_from_slice(&superior_refferrer.data.borrow())?;
+                    msg!("refeerrer's refferrer is valid");
+                } else {
+                    msg!("you should provide your refferrer's refferrer record"); 
+                    return Err(ProgramError::InvalidArgument);
+                }
+            }
+
+            invoke(
+            &system_instruction::transfer(
+                accounts.fee_payer.key, &refferrer_record, refferrer_record_lamports), 
+                &[
+                    accounts.fee_payer.clone(),
+                    accounts.refferrer_record_account.clone(),
+                    accounts.system_program.clone(),
+                ],
+            )?;
+
+            invoke_signed(
+                &system_instruction::allocate(
+                    &refferrer_record, 
+                    RefferrerRecordHeader::LEN as u64
+                ), 
+                &[accounts.refferrer_record_account.clone(), accounts.system_program.clone()], 
+                &[&refferrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+            )?;
+
+            invoke_signed(
+                &system_instruction::assign(&refferrer_record, &crate::ID),
+                &[accounts.refferrer_record_account.clone(), accounts.system_program.clone()],
+                &[&refferrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+            )?;
+
+            msg!("create payer's refferrer record account");
+            let mut data = accounts.refferrer_record_account.data.borrow_mut();
+            data[..32].copy_from_slice(&params.refferrer_key.to_bytes());
+
+            msg!("write in refferrer record account");
+        }else {
+            msg!("should give a rent");
+            return Err(ProgramError::InvalidArgument);
+        }
+
+    }else {
+        let buyer_refferrer_record =
+            RefferrerRecordHeader::unpack_from_slice(&accounts.refferrer_record_account.data.borrow())?;
+
+        if buyer_refferrer_record.refferrer_account != params.refferrer_key {
+            msg!("the refferrer you provied is fault");
+            return Err(ProgramError::InvalidArgument);
+        }
+        msg!("refferrer ok");
+    }
 
     let mut deposit = 
         get_sol_price(accounts.pyth_feed_account, params.my_price * 1 / 10)?;

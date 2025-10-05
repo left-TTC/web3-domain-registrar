@@ -16,7 +16,7 @@ use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key
 use solana_system_interface::instruction as system_instruction;
 
 use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
-    state::{NameStateRecordHeader, refferrerRecordHeader, ReverseLookup}, 
+    state::{NameStateRecordHeader, RefferrerRecordHeader, ReverseLookup}, 
     utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, START_PRICE, TIME}
 };
 
@@ -27,6 +27,7 @@ pub struct Params {
     pub name: String,
     pub root_name: String,
     pub price_decimals: u64,
+    pub refferrer_key: Pubkey,
 }
 
 #[derive(InstructionsAccount)]
@@ -55,10 +56,6 @@ pub struct Accounts<'a, T> {
     pub pyth_feed_account: &'a T,
     /// The rent sysvar account
     pub rent_sysvar: &'a T,
-    /// the refferrer -- must be unique
-    /// one question: if usr want to get the profile from his next level
-    /// he or she must keep the info is correspond
-    pub refferrer_account: &'a T,
     #[cons(writable)]
     pub refferrer_record_account: &'a T,
     /// vault
@@ -86,7 +83,6 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             fee_payer: next_account_info(accounts_iter)?,
             pyth_feed_account: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
-            refferrer_account: next_account_info(accounts_iter)?,
             refferrer_record_account: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
             rent_payer: next_account_info(accounts_iter)?,
@@ -172,23 +168,23 @@ pub fn process_start_name<'a, 'b: 'a>(
         
         msg!("payer's refferrer record account need to be intialized");
 
-        let refferrer_record_lamports = rent.minimum_balance(refferrerRecordHeader::LEN);
+        let refferrer_record_lamports = rent.minimum_balance(RefferrerRecordHeader::LEN);
 
-        if accounts.refferrer_account.key != &vault_key {
+        if params.refferrer_key != vault_key {
             msg!("payer use other's invitation");
             if let Some(superior_refferrer) = accounts.superior_refferrer_record {
                 let (superior_refferrer_key, _) = get_seeds_and_key(
                     &crate::ID, 
-                    get_hashed_name(&accounts.refferrer_account.key.to_string()), 
+                    get_hashed_name(&params.refferrer_key.to_string()), 
                     Some(&crate::ID), 
                     Some(&crate::ID)
                 );
-                check_account_key(accounts.refferrer_account, &superior_refferrer_key)?;
+                check_account_key(superior_refferrer, &superior_refferrer_key)?;
 
                 msg!("refferr's refferrer record account ok");
                 
                 let _state =  
-                    refferrerRecordHeader::unpack_from_slice(&superior_refferrer.data.borrow())?;
+                    RefferrerRecordHeader::unpack_from_slice(&superior_refferrer.data.borrow())?;
                 msg!("refeerrer's refferrer is valid");
             } else {
                 msg!("you should provide your refferrer's refferrer record"); 
@@ -209,7 +205,7 @@ pub fn process_start_name<'a, 'b: 'a>(
         invoke_signed(
             &system_instruction::allocate(
                 &refferrer_record, 
-                refferrerRecordHeader::LEN as u64
+                RefferrerRecordHeader::LEN as u64
             ), 
             &[accounts.refferrer_record_account.clone(), accounts.system_program.clone()], 
             &[&refferrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
@@ -223,13 +219,13 @@ pub fn process_start_name<'a, 'b: 'a>(
 
         msg!("create payer's refferrer record account");
         let mut data = accounts.refferrer_record_account.data.borrow_mut();
-        data[..32].copy_from_slice(&accounts.refferrer_account.key.to_bytes());
+        data[..32].copy_from_slice(&params.refferrer_key.to_bytes());
 
         msg!("write in refferrer record account");
     }else {
         let refferrer_data = 
-            refferrerRecordHeader::unpack_from_slice(&refferrer_record_account.data.borrow())?;
-        if &refferrer_data.refferrer_account != accounts.refferrer_account.key {
+            RefferrerRecordHeader::unpack_from_slice(&refferrer_record_account.data.borrow())?;
+        if refferrer_data.refferrer_account != params.refferrer_key {
             msg!("regferrer is not unique");
             return Err(ProgramError::InvalidArgument);
         }

@@ -10,7 +10,7 @@ pub enum ProgramInstruction {
     CreateRoot,
     StartName,
     IncreasePrice,
-    CreateName,
+    SettleName,
     StartProject,
     ConfirmRoot,
     Extract,

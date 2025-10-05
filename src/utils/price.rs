@@ -11,10 +11,8 @@ pub const CREATE_ROOT_TARGET: u64 = 500000000000;
 #[cfg(feature = "devnet")]
 pub const CREATE_ROOT_TARGET: u64 = 20000000;
 
-// $0.99
+// $1.99
 pub const START_PRICE: u64 = 1990000;
-
-pub const DEPOSIT_RATIO: f64 = 0.1;
 
 pub const PROJECT_START: u64 = 500000000;
 

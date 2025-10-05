@@ -59,7 +59,7 @@ impl Processor {
                     .map_err(|_| ProgramError::InvalidArgument)?;
                 increase_price::process_increase_price(program_id, accounts, params)?;
             }
-            ProgramInstruction::CreateName => {
+            ProgramInstruction::SettleName => {
                 msg!("Instruction: settle and create an domain name");
                 let params = settle_auction::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidArgument)?;

@@ -10,13 +10,12 @@ use web3_utils::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo}, sysvar, entrypoint::ProgramResult, msg, program::invoke, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, rent::Rent, sysvar::Sysvar 
+    account_info::{next_account_info, AccountInfo}, sysvar, entrypoint::ProgramResult, msg, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, rent::Rent, sysvar::Sysvar 
 };
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 
-use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, cpi::Cpi, state::NameStateRecordHeader, utils::{check_state_time, get_hashed_name, get_sol_price, TIME}};
+use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::NameStateRecordHeader, utils::{check_state_time, get_hashed_name, get_sol_price, TIME}};
 
 pub mod initialize;
 pub mod repeat;
@@ -24,7 +23,7 @@ pub mod repeat;
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
 pub struct Params {
-    pub name: String,
+    pub domain_name: String,
     pub custom_price: Option<u64>,
 }
 
@@ -42,7 +41,6 @@ pub struct Accounts<'a, T> {
     #[cons(writable)]
     pub reverse_lookup: &'a T,
     /// The domain auction state account
-    #[cons(writable)]
     pub domain_state_account: &'a T,
     /// The system program account
     pub system_program: &'a T,
@@ -130,7 +128,7 @@ pub fn process_settle_auction<'a, 'b: 'a>(
     accounts.check()?;
 
     let name_state_account = accounts.domain_state_account;
-    let hased_name = get_hashed_name(&params.name);
+    let hased_name = get_hashed_name(&params.domain_name);
     let (name_state_key, _) = get_seeds_and_key(
         &crate::ID, 
         hased_name.clone(), 

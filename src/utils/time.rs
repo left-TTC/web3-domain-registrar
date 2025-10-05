@@ -6,12 +6,12 @@ use solana_program::{
 #[cfg(not(feature = "devnet"))]
 pub const AUCTION_TIME_LIMIT: i64 = 259200;
 #[cfg(feature = "devnet")]
-pub const AUCTION_TIME_LIMIT: i64 = 2400; // 4min
+pub const AUCTION_TIME_LIMIT: i64 = 600; // 4min
 
 #[cfg(not(feature = "devnet"))]
 pub const SETTLE_TIME_LIMIT: i64 = 604800;
 #[cfg(feature = "devnet")]
-pub const SETTLE_TIME_LIMIT: i64 = 2400; // 3min
+pub const SETTLE_TIME_LIMIT: i64 = 2400; // 40min test is 400min
 
 #[derive(PartialEq)]
 pub enum TIME {
@@ -36,7 +36,7 @@ pub fn check_state_time(
         return Ok(TIME::AUCTION)
     }
 
-    let settle_expiration_time = auction_expiration_time + SETTLE_TIME_LIMIT;
+    let settle_expiration_time = auction_expiration_time + 10 * SETTLE_TIME_LIMIT;
     if (auction_expiration_time..=settle_expiration_time).contains(&now_timestamp) {
         return Ok(TIME::SETTLE)
     }
