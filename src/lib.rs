@@ -23,9 +23,6 @@ pub mod constants {
         
     use solana_program::{pubkey, pubkey::Pubkey};
 
-    //name service id: used to register domain
-    pub const WEB3_NAME_SERVICE: Pubkey = pubkey!("BEUuE7dmW6yyTVhyecrHktKF1necQvfiZdFyBCBjCXQm");
-
     pub const WSOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
 
     pub const SYSTEM_ID: Pubkey = pubkey!("11111111111111111111111111111111");

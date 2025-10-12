@@ -10,12 +10,12 @@ use web3_utils::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo}, sysvar, entrypoint::ProgramResult, msg, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, rent::Rent, sysvar::Sysvar 
+    account_info::{next_account_info, AccountInfo}, sysvar, entrypoint::ProgramResult, msg, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey
 };
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 
 
-use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::NameStateRecordHeader, utils::{check_state_time, get_hashed_name, get_sol_price, TIME}};
+use crate::{central_state, constants::{SYSTEM_ID}, state::NameStateRecordHeader, utils::{check_state_time, get_hashed_name, get_sol_price, TIME}};
 
 pub mod initialize;
 pub mod repeat;
@@ -101,13 +101,13 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
     pub fn check(&self) -> Result<(), ProgramError> {
 
-        check_account_key(self.naming_service_program, &WEB3_NAME_SERVICE).unwrap();
+        check_account_key(self.naming_service_program, &web3_domain_name_service::ID).unwrap();
         msg!("nameservice id ok");
         check_account_key(self.system_program, &SYSTEM_ID).unwrap();
         msg!("system_program id ok");
         check_account_key(self.rent_sysvar, &sysvar::rent::ID)?;
 
-        check_account_owner(self.root_domain, &WEB3_NAME_SERVICE)?;
+        check_account_owner(self.root_domain, &web3_domain_name_service::ID)?;
         check_account_owner(self.domain_state_account, &crate::ID)?;
 
         check_signer(self.fee_payer).unwrap();

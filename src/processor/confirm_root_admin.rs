@@ -14,7 +14,7 @@ use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key
 
 use crate::{
     central_state, 
-    constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
+    constants::{SYSTEM_ID}, 
     cpi::Cpi, 
     state::{RootStateRecordHeader}, 
     utils::{ get_hashed_name, CREATE_ROOT_TARGET}
@@ -77,7 +77,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             rent_sysvar: next_account_info(accounts_iter)?,
         };
 
-        check_account_key(accounts.naming_service_program,  &WEB3_NAME_SERVICE)?;
+        check_account_key(accounts.naming_service_program,  &web3_domain_name_service::ID)?;
         check_account_key(accounts.system_program, &SYSTEM_ID)?;
         check_account_key(accounts.central_state, &central_state::KEY)?;
         check_account_key(accounts.rent_sysvar, &sysvar::rent::ID)?;

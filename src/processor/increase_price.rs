@@ -22,7 +22,7 @@ use web3_domain_name_service::{utils::get_seeds_and_key};
 
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, state::{NameStateRecordHeader, RefferrerRecordHeader}, utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, TIME}};
+use crate::{central_state, constants::{SYSTEM_ID}, state::{NameStateRecordHeader, RefferrerRecordHeader}, utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, TIME}};
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
@@ -89,7 +89,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         check_account_key(self.system_program, &SYSTEM_ID).unwrap();
         msg!("system_program id ok");
 
-        check_account_owner(self.root_domain, &WEB3_NAME_SERVICE)?;
+        check_account_owner(self.root_domain, &web3_domain_name_service::ID)?;
         check_account_owner(self.domain_state_account, &crate::ID)
             .map_err(|_| crate::Error::AlreadyRegistered)?;
 

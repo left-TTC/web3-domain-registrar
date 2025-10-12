@@ -3,7 +3,7 @@
 
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 use web3_utils::{
-    check::{check_account_owner, check_account_key, check_signer},
+    check::{check_account_key, check_signer},
     BorshSize,
     borsh_size::BorshSize,
     InstructionsAccount,
@@ -12,7 +12,7 @@ use web3_utils::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     msg,
-    program::{invoke, invoke_signed},
+    program::{invoke_signed},
     rent::Rent,
     sysvar::Sysvar,
     account_info::{next_account_info, AccountInfo},

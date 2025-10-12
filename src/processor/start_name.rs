@@ -1,7 +1,5 @@
 //! Create a domain name and buy the ownership of a domain name
 
-use std::fmt::format;
-
 use web3_utils::{
     check::{check_account_key, check_account_owner, check_signer},
     BorshSize, InstructionsAccount,
@@ -15,7 +13,7 @@ use solana_program::{
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
+use crate::{central_state, constants::{SYSTEM_ID}, 
     state::{NameStateRecordHeader, RefferrerRecordHeader, ReverseLookup}, 
     utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, START_PRICE, TIME}
 };
@@ -61,7 +59,8 @@ pub struct Accounts<'a, T> {
     /// vault
     #[cons(writable)]
     pub vault: &'a T,
-    /// rent payer
+    /// rent payer -- should be wiretable, because it needs to receive the profit
+    #[cons(writable)]
     pub rent_payer: &'a T,
     /// refferrer's refferrer record account
     pub superior_refferrer_record: Option<&'a T>,
@@ -92,7 +91,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
     pub fn check(&self) -> Result<(), ProgramError> {
 
-        check_account_key(self.naming_service_program, &WEB3_NAME_SERVICE).unwrap();
+        check_account_key(self.naming_service_program, &web3_domain_name_service::ID).unwrap();
         msg!("nameservice id ok");
         check_account_key(self.system_program, &SYSTEM_ID).unwrap();
         msg!("system_program id ok");
@@ -109,7 +108,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         //          domain state --> register
         //          domain name --> name service
 
-        check_account_owner(self.root_domain, &WEB3_NAME_SERVICE)?;
+        check_account_owner(self.root_domain, &web3_domain_name_service::ID)?;
         msg!("root_domain owner ok");
 
         // Check signer

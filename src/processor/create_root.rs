@@ -14,7 +14,7 @@ use web3_domain_name_service::{utils::get_seeds_and_key};
 
 use crate::{
     central_state, 
-    constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, 
+    constants::{SYSTEM_ID}, 
     state::{write_data, RootStateRecordHeader}, 
     utils::{ get_hashed_name, get_sol_price, CREATE_ROOT_TARGET}
 };

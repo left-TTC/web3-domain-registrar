@@ -29,9 +29,9 @@ impl Cpi {
         invoke_signed(
             &transfer_name_instruction,
             &[
-                name_service_program.clone(),
-                central_state.clone(),
                 name_account.clone(),
+                central_state.clone(),
+                root_domain_account.clone(),
             ],
             &[signer_seeds],
         )

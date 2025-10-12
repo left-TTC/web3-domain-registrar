@@ -22,7 +22,7 @@ use solana_program::{
 };
 use solana_system_interface::instruction as system_instruction;
 use crate::{
-    central_state, constants::{SYSTEM_ID, WEB3_NAME_SERVICE}, utils::{get_hashed_name, get_sol_price, ADVANCED_STORAGE}
+    central_state, constants::{SYSTEM_ID}, utils::{get_hashed_name, get_sol_price, ADVANCED_STORAGE}
 };
 
 use crate::state::RootStateRecordHeader;
@@ -102,7 +102,7 @@ pub fn process_initiate_root(
     }
 
     let (root_name_account, _) = get_seeds_and_key(
-        &WEB3_NAME_SERVICE, 
+        &web3_domain_name_service::ID, 
         get_hashed_name(&params.root_name), 
         None, 
         None,
