@@ -18,18 +18,17 @@ use solana_program::{
     program_pack::Pack, 
     pubkey::Pubkey, rent::Rent, sysvar::Sysvar, 
 };
-use web3_domain_name_service::{utils::get_seeds_and_key};
 
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::{SYSTEM_ID}, state::{NameStateRecordHeader, RefferrerRecordHeader}, utils::{check_state_time, get_hashed_name, get_now_time, get_sol_price, TIME}};
+use crate::{constants::{SYSTEM_ID, return_vault_key}, state::{NameStateRecordHeader, RefferrerRecordHeader, get_name_state_key, get_refferrer_record_key}, utils::{TIME, check_state_time, get_now_time, share}};
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
 pub struct Params {
     pub name: String,
-    pub my_price: u64,
+    pub my_price_sol: u64,
     pub refferrer_key: Pubkey,
 }
 
@@ -46,8 +45,6 @@ pub struct Accounts<'a, T> {
     /// The buyer account         
     #[cons(writable, signer)]
     pub fee_payer: &'a T,
-    /// The Pyth feed account
-    pub pyth_feed_account: &'a T,
     // it's not necessary to confirm the refferrer
     /// last bidder
     #[cons(writable)]
@@ -75,7 +72,6 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             domain_state_account: next_account_info(accounts_iter)?,
             system_program: next_account_info(accounts_iter)?,
             fee_payer: next_account_info(accounts_iter)?,
-            pyth_feed_account: next_account_info(accounts_iter)?,
             last_bidder: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
             refferrer_record_account: next_account_info(accounts_iter)?,
@@ -111,44 +107,32 @@ pub fn process_increase_price<'a, 'b: 'a>(
     accounts.check()?;
 
     let name_state_account = accounts.domain_state_account;
-    //auction state
-    let (name_state_key, _) = get_seeds_and_key(
-        &crate::ID, 
-        get_hashed_name(&params.name), 
-        Some(&central_state::KEY), 
-        Some(accounts.root_domain.key)
-    );
+    let (name_state_key, _) = 
+        get_name_state_key(&params.name, accounts.root_domain.key);
+    
     check_account_key(name_state_account, &name_state_key)?;
-    let name_state = 
+    msg!("name state key right");
+
+    let name_state_data = 
         NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
     
-    if check_state_time(name_state.update_time)? != TIME::AUCTION {
+    if check_state_time(name_state_data.update_time)? != TIME::AUCTION {
         msg!("This auction has settled");
         return Err(ProgramError::InvalidArgument);
     }
-
-    if params.my_price < name_state.highest_price + 100000{
-        msg!("You should bid more than the original bid");
+    if params.my_price_sol < share(name_state_data.highest_price, 101)? {
+        msg!("At least 1% markup");
         return Err(ProgramError::InvalidArgument);
     }
 
     let vault = accounts.vault;
-    let (vault_key, _) = get_seeds_and_key(
-        &crate::ID, 
-        get_hashed_name("vault"), 
-        Some(&central_state::KEY), 
-        Some(&central_state::KEY)
-    );
+    let (vault_key, _) = return_vault_key();
     check_account_key(vault, &vault_key)?;
+    msg!("vault ok");
 
     // the referreer record account
     let refferrer_record_account = accounts.refferrer_record_account;
-    let (refferrer_record, refferrer_seeds) = get_seeds_and_key(
-        &crate::ID, 
-        get_hashed_name(&accounts.fee_payer.key.to_string()), 
-        Some(&crate::ID), 
-        Some(&crate::ID),
-    );
+    let (refferrer_record, refferrer_seeds) = get_refferrer_record_key(&accounts.fee_payer.key);
     check_account_key(refferrer_record_account, &refferrer_record)?;
     msg!("payer's refferrer record account ok");
 
@@ -162,12 +146,7 @@ pub fn process_increase_price<'a, 'b: 'a>(
             if params.refferrer_key != vault_key {
                 msg!("payer use other's invitation");
                 if let Some(superior_refferrer) = accounts.superior_refferrer_record {
-                    let (superior_refferrer_key, _) = get_seeds_and_key(
-                        &crate::ID, 
-                        get_hashed_name(&params.refferrer_key.to_string()), 
-                        Some(&crate::ID), 
-                        Some(&crate::ID)
-                    );
+                    let (superior_refferrer_key, _) = get_refferrer_record_key(&params.refferrer_key);
                     check_account_key(superior_refferrer, &superior_refferrer_key)?;
 
                     msg!("refferr's refferrer record account ok");
@@ -176,7 +155,7 @@ pub fn process_increase_price<'a, 'b: 'a>(
                         RefferrerRecordHeader::unpack_from_slice(&superior_refferrer.data.borrow())?;
                     msg!("refeerrer's refferrer is valid");
                 } else {
-                    msg!("you should provide your refferrer's refferrer record"); 
+                    msg!("you should provide your refferrer's refferrer record while your refferrer isn't vault"); 
                     return Err(ProgramError::InvalidArgument);
                 }
             }
@@ -207,8 +186,13 @@ pub fn process_increase_price<'a, 'b: 'a>(
             )?;
 
             msg!("create payer's refferrer record account");
-            let mut data = accounts.refferrer_record_account.data.borrow_mut();
-            data[..32].copy_from_slice(&params.refferrer_key.to_bytes());
+
+            let record = RefferrerRecordHeader::new(
+                params.refferrer_key
+            );
+
+            let mut data = accounts.refferrer_record_account.try_borrow_mut_data()?;
+            record.pack_into_slice(&mut data);
 
             msg!("write in refferrer record account");
         }else {
@@ -227,17 +211,10 @@ pub fn process_increase_price<'a, 'b: 'a>(
         msg!("refferrer ok");
     }
 
-    let mut deposit = 
-        get_sol_price(accounts.pyth_feed_account, params.my_price * 1 / 10)?;
-    
-    let back_deposit = 
-        get_sol_price(accounts.pyth_feed_account, name_state.highest_price * 1 / 10)?;
-
-    deposit -= back_deposit;
 
     // transfer back the deposit
     invoke(&system_instruction::transfer(
-        accounts.fee_payer.key, accounts.last_bidder.key, back_deposit), 
+        accounts.fee_payer.key, accounts.last_bidder.key, name_state_data.highest_price), 
         &[
             accounts.fee_payer.clone(),
             accounts.last_bidder.clone(),
@@ -246,7 +223,7 @@ pub fn process_increase_price<'a, 'b: 'a>(
     )?;
     //transfer the increased part to vault
     invoke(&system_instruction::transfer(
-        accounts.fee_payer.key, &vault_key, deposit), 
+        accounts.fee_payer.key, &vault_key, params.my_price_sol - name_state_data.highest_price), 
         &[
             accounts.fee_payer.clone(),
             accounts.vault.clone(),
@@ -256,9 +233,8 @@ pub fn process_increase_price<'a, 'b: 'a>(
 
     let new_record = NameStateRecordHeader::new(
         accounts.fee_payer.key, 
-        &name_state.rent_payer, 
         get_now_time()?, 
-        params.my_price,
+        params.my_price_sol,
     );
     NameStateRecordHeader::pack(new_record, &mut name_state_account.data.borrow_mut())?;
     msg!("update the name record ok");

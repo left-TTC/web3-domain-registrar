@@ -24,7 +24,7 @@ use solana_program::{
 };
 use solana_system_interface::instruction as system_instruction;
 use crate::{
-    central_state, constants::{ADMIN, SYSTEM_ID,}, cpi::Cpi, utils::{get_hashed_name, PROJECT_START}
+    central_state, constants::{ ADMIN_ANDY, ADMIN_FANMOCHENG, SYSTEM_ID, return_vault_key}, cpi::Cpi, utils::{PROJECT_START, get_hashed_name}
 };
 
 
@@ -75,7 +75,13 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
         // Check keys
         check_account_key(accounts.system_program, &SYSTEM_ID)?;
-        check_account_key(accounts.administrator, &ADMIN)?;
+        
+        let admin_key = accounts.administrator.key;
+        if admin_key != &ADMIN_ANDY && admin_key != &ADMIN_FANMOCHENG {
+            msg!("admin error");
+            return Err(ProgramError::InvalidArgument);
+        }
+
         check_account_key(accounts.central_state, &central_state::KEY)?;
         check_account_key(accounts.rent_sysvar, &sysvar::rent::ID)?;
 
@@ -93,8 +99,8 @@ pub fn process_start_project(
 ) -> ProgramResult {
     let accounts = Accounts::parse(accounts)?;
 
-    if params.start_domain != "web3" {
-        msg!("start should be web3");
+    if params.start_domain != "test" {
+        msg!("start should be test");
         return Err(ProgramError::InvalidArgument);
     }
 
@@ -120,14 +126,11 @@ pub fn process_start_project(
     check_account_key(name_reverse, &name_reverse_key)?;
 
     let vault = accounts.vault;
-    let (vault_key, vault_seeds) = get_seeds_and_key(
-        &crate::ID, 
-        get_hashed_name("vault"), 
-        Some(&central_state::KEY), 
-        Some(&central_state::KEY)
-    );
+    let (vault_key, bump) = return_vault_key();
     check_account_key(vault, &vault_key)?;
     msg!("check vault ok");
+
+    let vault_seeds: &[&[u8]] = &[b"vault", &[bump]];
 
     invoke_signed(
         &system_instruction::create_account(
@@ -142,7 +145,7 @@ pub fn process_start_project(
             accounts.vault.clone(),
             accounts.system_program.clone(),
         ], 
-        &[&vault_seeds.chunks(32).collect::<Vec<&[u8]>>()]
+        &[vault_seeds]
     )?;
 
     let rent = Rent::from_account_info(accounts.rent_sysvar)?;

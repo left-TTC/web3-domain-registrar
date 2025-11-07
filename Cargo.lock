@@ -2270,14 +2270,15 @@ dependencies = [
 
 [[package]]
 name = "web3-domain-name-service"
-version = "0.1.8"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7993d91fc77b7136f075583ee098b2eec8adf25a136ace1145ec651f7892e2e7"
+checksum = "a013d62127d11e87d531348dfefdbca056c81f6386784a74d169c0731711a93e"
 dependencies = [
  "borsh 1.5.7",
  "num-derive 0.4.2",
  "num-traits",
  "solana-program",
+ "solana-system-interface",
  "thiserror 2.0.16",
 ]
 

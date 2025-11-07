@@ -16,7 +16,7 @@ use crate::{
     central_state, 
     constants::{SYSTEM_ID}, 
     state::{write_data, RootStateRecordHeader}, 
-    utils::{ get_hashed_name, get_sol_price, CREATE_ROOT_TARGET}
+    utils::{ get_hashed_name, CREATE_ROOT_TARGET}
 };
 
 use {
@@ -40,7 +40,7 @@ use solana_system_interface::instruction as instruction;
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 pub struct Params {
     pub root_name: String,
-    pub add: u64,
+    pub add_sol: u64,
 }
 
 #[derive(InstructionsAccount)]
@@ -58,8 +58,6 @@ pub struct Accounts<'a, T> {
     pub root_state_account: &'a T,
     /// The registrar central state account
     pub central_state: &'a T,
-    /// root domain name account
-    pub pyth_feed_account: &'a T,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -71,7 +69,6 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             fee_payer: next_account_info(accounts_iter)?,
             root_state_account: next_account_info(accounts_iter)?,
             central_state: next_account_info(accounts_iter)?,
-            pyth_feed_account: next_account_info(accounts_iter)?,
         };
 
         check_account_key(accounts.system_program, &SYSTEM_ID)?;
@@ -95,7 +92,7 @@ pub fn process_create_root(
     params: Params
 ) -> ProgramResult {
 
-    msg!("root name: {:?}, add: {:?}", params.root_name, params.add);
+    msg!("root name: {:?}, add: {:?} lamports", params.root_name, params.add_sol);
 
     let accounts = Accounts::parse(accounts)?;
     msg!("parse ok");
@@ -124,7 +121,7 @@ pub fn process_create_root(
     }
     msg!("rootState ok");
 
-    let mut added_amount = params.add;
+    let mut added_amount = params.add_sol;
     {
         let root_state_account_data = root_state_account.data.borrow();
         let root_record_header = 
@@ -137,7 +134,7 @@ pub fn process_create_root(
 
         added_amount += root_record_header.amount;
         
-        msg!("used to be: {:?} and now {:?}, add amount ok", root_record_header.amount, added_amount);
+        msg!("used to be: {:?} and now {:?} lamports, add amount ok", root_record_header.amount, added_amount);
     }
 
     let bytes = added_amount.to_le_bytes();
@@ -150,15 +147,12 @@ pub fn process_create_root(
         difference = added_amount - CREATE_ROOT_TARGET;
     }
 
-    let add_token_price = 
-        get_sol_price(&accounts.pyth_feed_account, params.add - difference)?;
-    msg!("get add token price: {:?}", add_token_price );
 
     invoke(
     &instruction::transfer(
             accounts.fee_payer.key,
             accounts.vault.key,
-            add_token_price
+            params.add_sol - difference
         ), 
         &[
             accounts.fee_payer.clone(),

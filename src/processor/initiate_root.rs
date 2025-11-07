@@ -22,7 +22,7 @@ use solana_program::{
 };
 use solana_system_interface::instruction as system_instruction;
 use crate::{
-    central_state, constants::{SYSTEM_ID}, utils::{get_hashed_name, get_sol_price, ADVANCED_STORAGE}
+    central_state, constants::{SYSTEM_ID}, utils::{get_hashed_name, ADVANCED_STORAGE}
 };
 
 use crate::state::RootStateRecordHeader;
@@ -50,8 +50,6 @@ pub struct Accounts<'a, T> {
     pub vault: &'a T,
     /// The rent sysvar account
     pub rent_sysvar: &'a T,
-    /// The Pyth feed account
-    pub pyth_feed_account: &'a T,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -64,7 +62,6 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             root_name_account: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
-            pyth_feed_account: next_account_info(accounts_iter)?,
         };
 
         // Check keys
@@ -125,11 +122,7 @@ pub fn process_initiate_root(
     }
     msg!("root state account ok");
 
-    // frist transfer the advanced storage -- will be used to create root name state account
-    let mut extra_lamports = 
-        get_sol_price(accounts.pyth_feed_account, ADVANCED_STORAGE)?;
-
-    msg!("get extract Sol ok: {:?}", extra_lamports);
+    let mut extra_lamports = ADVANCED_STORAGE;
 
     // if the root state account doesn't created
     if root_state_account.data.borrow().len() == 0 {

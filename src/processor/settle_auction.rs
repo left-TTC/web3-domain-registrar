@@ -15,7 +15,7 @@ use solana_program::{
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 
 
-use crate::{central_state, constants::{SYSTEM_ID}, state::NameStateRecordHeader, utils::{check_state_time, get_hashed_name, get_sol_price, TIME}};
+use crate::{central_state, constants::SYSTEM_ID, state::{NameStateRecordHeader, get_name_state_key}, utils::{TIME, check_state_time, get_hashed_name, promotion_inspect::settle_qualifications_verify}};
 
 pub mod initialize;
 pub mod repeat;
@@ -41,6 +41,7 @@ pub struct Accounts<'a, T> {
     #[cons(writable)]
     pub reverse_lookup: &'a T,
     /// The domain auction state account
+    #[cons(writable)]
     pub domain_state_account: &'a T,
     /// The system program account
     pub system_program: &'a T,
@@ -49,28 +50,40 @@ pub struct Accounts<'a, T> {
     /// The buyer account         
     #[cons(writable, signer)]
     pub fee_payer: &'a T,
-    /// The Pyth feed account
-    pub pyth_feed_account: &'a T,
     /// rent sysvar
     pub rent_sysvar: &'a T,
     /// name account owner -- The initialized domain name can be arbitrary
     /// Domain names auctioned more than twice must be the same as in the records
-    pub name_account_owner: &'a T,
-    /// buyer's refferrer record
+    #[cons(writable)]
+    pub origin_name_account_owner: &'a T,
+    #[cons(writable)]
+    pub origin_name_owner_record: &'a T,
+    /// vault
+    #[cons(writable)]
+    pub vault: &'a T,
+    /// new domain owner
+    pub new_domain_owner: &'a T,
+    /// new owner's refferrer record
+    #[cons(writable)]
     pub refferrer_record: &'a T,
     /// buyer's refferrer -- we named A
     #[cons(writable)]
     pub refferrer_a: &'a T,
     /// A's refferrer record
+    #[cons(writable)]
     pub refferrer_a_record: Option<&'a T>,
     /// A's refferrer -- named B
     #[cons(writable)]
     pub refferrer_b: Option<&'a T>,
     /// B's refferrer record
+    #[cons(writable)]
     pub refferrer_b_record: Option<&'a T>,
     /// B's refferrer -- named C
     #[cons(writable)]
     pub refferrer_c: Option<&'a T>,
+    /// C's refferrer record
+    #[cons(writable)]
+    pub refferrer_c_record: Option<&'a T>,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -87,15 +100,18 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             system_program: next_account_info(accounts_iter)?,
             central_state: next_account_info(accounts_iter)?,
             fee_payer: next_account_info(accounts_iter)?,
-            pyth_feed_account: next_account_info(accounts_iter)?,
             rent_sysvar: next_account_info(accounts_iter)?,
-            name_account_owner: next_account_info(accounts_iter)?,
+            origin_name_account_owner: next_account_info(accounts_iter)?,
+            origin_name_owner_record: next_account_info(accounts_iter)?,
+            vault: next_account_info(accounts_iter)?,
+            new_domain_owner:next_account_info(accounts_iter)?,
             refferrer_record: next_account_info(accounts_iter)?,
             refferrer_a: next_account_info(accounts_iter)?,
             refferrer_a_record: next_account_info(accounts_iter).ok(),
             refferrer_b: next_account_info(accounts_iter).ok(),
             refferrer_b_record: next_account_info(accounts_iter).ok(),
             refferrer_c: next_account_info(accounts_iter).ok(),
+            refferrer_c_record: next_account_info(accounts_iter).ok(),
         })
     }
 
@@ -117,6 +133,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     }
 }
 
+// all pepole on the refferrer chain can confirm the domain
 
 pub fn process_settle_auction<'a, 'b: 'a>(
     _program_id: &Pubkey,
@@ -129,72 +146,78 @@ pub fn process_settle_auction<'a, 'b: 'a>(
 
     let name_state_account = accounts.domain_state_account;
     let hased_name = get_hashed_name(&params.domain_name);
-    let (name_state_key, _) = get_seeds_and_key(
-        &crate::ID, 
-        hased_name.clone(), 
-        Some(&central_state::KEY), 
-        Some(accounts.root_domain.key)
+
+    let (name_state_key, _) = get_name_state_key(
+        &params.domain_name, 
+        accounts.root_domain.key
     );
     check_account_key(name_state_account, &name_state_key)?;
     msg!("name state key ok");
-    let name_state = 
+
+    {    
+        let name_state_data = 
+            NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
+        
+        // after auction time 
+        if check_state_time(name_state_data.update_time)? != TIME::PENDING {
+            msg!("not settle time");
+            return Err(ProgramError::InvalidArgument);
+        }
+        
+        settle_qualifications_verify(&accounts, &name_state_data.highest_bidder)?;
+        msg!("settle man right");
+
+        let domain_name_account = accounts.name;
+        let (name_account_key, _) = get_seeds_and_key(
+            accounts.naming_service_program.key, 
+            hased_name.clone(), 
+            None, 
+            Some(accounts.root_domain.key)
+        );
+        check_account_key(domain_name_account, &name_account_key)?;
+        msg!("name account key ok");
+
+        let hashed_reverse_lookup = get_hashed_name(&name_account_key.to_string());
+        let (reverse_lookup_account_key, _) = get_seeds_and_key(
+            accounts.naming_service_program.key,
+            hashed_reverse_lookup.clone(),
+            Some(&central_state::KEY),
+            None,
+        );
+        check_account_key(accounts.reverse_lookup, &reverse_lookup_account_key)?;
+        msg!("reverse account key ok");
+    
+        let name_record = 
+            NameRecordHeader::unpack_from_slice(&domain_name_account.data.borrow());
+
+        match name_record {
+            // buy from others -- means deposit ratio is 5%
+            Ok(record_data) =>{
+                self::repeat::repeat_settle(
+                    accounts, 
+                    params, 
+                    record_data, 
+                    &name_state_data, 
+                )?;
+            }
+            Err(_) => {
+                self::initialize::initialize_settle(
+                    accounts, 
+                    params, 
+                    &name_state_data, 
+                    hased_name, 
+                    hashed_reverse_lookup
+                )?;
+            }
+        }
+    }
+    
+
+    let mut name_state_data =
         NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
-    
-    if check_state_time(name_state.update_time)? != TIME::SETTLE {
-        msg!("over settle time");
-        return Err(ProgramError::InvalidArgument);
-    }
-    
-    check_account_key(accounts.fee_payer, &name_state.highest_bidder)?;
-    msg!("settle man right");
-
-    let domain_name_account = accounts.name;
-    let (name_account_key, _) = get_seeds_and_key(
-        accounts.naming_service_program.key, 
-        hased_name.clone(), 
-        None, 
-        Some(accounts.root_domain.key)
-    );
-    check_account_key(domain_name_account, &name_account_key)?;
-    msg!("name account key ok");
-
-    let hashed_reverse_lookup = get_hashed_name(&name_account_key.to_string());
-    let (reverse_lookup_account_key, _) = get_seeds_and_key(
-        accounts.naming_service_program.key,
-        hashed_reverse_lookup.clone(),
-        Some(&central_state::KEY),
-        None,
-    );
-    check_account_key(accounts.reverse_lookup, &reverse_lookup_account_key)?;
-    msg!("reverse account key ok");
-
-    // have already paid 10% or 5% -- check name account to distinguish between these two cases
-    let price = get_sol_price(accounts.pyth_feed_account, name_state.highest_price)?;
-
-    let name_record = 
-        NameRecordHeader::unpack_from_slice(&domain_name_account.data.borrow());
-
-    match name_record {
-        // buy from others -- means deposit ratio is 5%
-        Ok(record_data) =>{
-            self::repeat::repeat_settle(
-                accounts, 
-                params, 
-                record_data, 
-                name_state, 
-                price, 
-            )?;
-        }
-        Err(_) => {
-            self::initialize::initialize_settle(
-                accounts, 
-                params, 
-                price, 
-                hased_name, 
-                hashed_reverse_lookup
-            )?;
-        }
-    }
+    name_state_data.highest_price += 1;
+    name_state_data.settled = true;
+    name_state_data.pack_into_slice(&mut name_state_account.try_borrow_mut_data()?);
 
     Ok(())
 }

@@ -26,7 +26,7 @@ num-traits = "0.2.14"
 num-derive = "0.3.3"
 borsh = "0.10.3"
 thiserror = "1.0.24"
-web3-domain-name-service = {version = "0.1.8", features = ["no-entrypoint"]}
+web3-domain-name-service = {version = "0.1.10", features = ["no-entrypoint"]}
 unicode-segmentation = "1.10.1"
 web3-utils = { version = "0.2.4", features = ["devnet"] }
 solana-system-interface = { version = "1", features = ["bincode"] }

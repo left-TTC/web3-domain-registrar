@@ -1,24 +1,18 @@
 use solana_program::{
-     clock::Clock, msg, program_error::ProgramError, sysvar::Sysvar 
+     clock::Clock, program_error::ProgramError, sysvar::Sysvar 
 };
 
 
 #[cfg(not(feature = "devnet"))]
 pub const AUCTION_TIME_LIMIT: i64 = 259200;
 #[cfg(feature = "devnet")]
-pub const AUCTION_TIME_LIMIT: i64 = 600; // 4min
-
-#[cfg(not(feature = "devnet"))]
-pub const SETTLE_TIME_LIMIT: i64 = 604800;
-#[cfg(feature = "devnet")]
-pub const SETTLE_TIME_LIMIT: i64 = 2400; // 40min test is 400min
+pub const AUCTION_TIME_LIMIT: i64 = 600; // 10min
 
 #[derive(PartialEq)]
 pub enum TIME {
     ERROR,
     AUCTION,
-    SETTLE,
-    RESALE
+    PENDING
 }
 
 pub fn check_state_time(
@@ -36,12 +30,7 @@ pub fn check_state_time(
         return Ok(TIME::AUCTION)
     }
 
-    let settle_expiration_time = auction_expiration_time + 10 * SETTLE_TIME_LIMIT;
-    if (auction_expiration_time..=settle_expiration_time).contains(&now_timestamp) {
-        return Ok(TIME::SETTLE)
-    }
-    
-    Ok(TIME::RESALE)
+    Ok(TIME::PENDING)
 }
 
 pub fn get_now_time() -> Result<i64, ProgramError> {
