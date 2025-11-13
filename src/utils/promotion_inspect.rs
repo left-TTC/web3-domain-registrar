@@ -4,11 +4,10 @@ use solana_program::msg;
 use solana_program::program_error::ProgramError;
 use solana_program::pubkey::Pubkey;
 use solana_program::program_pack::Pack;
-use web3_utils::check::check_account_key;
 
 
 use crate::processor::settle_auction::Accounts;
-use crate::state::{RefferrerRecordHeader, get_refferrer_record_key};
+use crate::state::{ReferrerRecordHeader};
 use crate::utils::share;
 
 pub fn settle_qualifications_verify(
@@ -20,19 +19,19 @@ pub fn settle_qualifications_verify(
         msg!("is the bidder");
         return Ok(())
     }
-    if accounts.refferrer_a.key == accounts.fee_payer.key {
-        msg!("is the refferrer a");
+    if accounts.referrer_a.key == accounts.fee_payer.key {
+        msg!("is the referrer a");
         return Ok(())
     }
-    if let Some(refferr_b) = accounts.refferrer_b {
+    if let Some(refferr_b) = accounts.referrer_b {
         if refferr_b.key == accounts.fee_payer.key {
-            msg!("is the refferrer b");
+            msg!("is the referrer b");
             return Ok(())
         }
     }
-    if let Some(refferr_c) = accounts.refferrer_c {
+    if let Some(refferr_c) = accounts.referrer_c {
         if refferr_c.key == accounts.fee_payer.key {
-            msg!("is the refferrer c");
+            msg!("is the referrer c");
             return Ok(())
         }
     }
@@ -41,198 +40,141 @@ pub fn settle_qualifications_verify(
     Err(ProgramError::InvalidArgument)
 }
 
-fn refferrer_profit_add(
-    refferrer_record: Option<&AccountInfo>,
+fn referrer_profit_add(
+    referrer_record: Option<&AccountInfo>,
+    // These are the subordinates's shares
     profit_add_sol: u64,
-    up_level: &mut u8,
-    now_user_volumn: u64,
-) -> ProgramResult {
+) -> Result<u64, ProgramError> {
 
-    if let Some(refferrer_record) = refferrer_record {
-        let mut data_ref = refferrer_record.try_borrow_mut_data()?;
+    if let Some(referrer_record) = referrer_record {
+        let mut data_ref = referrer_record.try_borrow_mut_data()?;
         let mut record_data = 
-            RefferrerRecordHeader::unpack_from_slice(&data_ref)?;
+            ReferrerRecordHeader::unpack_from_slice(&data_ref)?;
 
         record_data.profit = record_data
             .profit
             .checked_add(profit_add_sol)
-            .ok_or(ProgramError::InvalidInstructionData)?;
+            .ok_or(ProgramError::InsufficientFunds)?;
         msg!("add profit");
 
-        record_data.volume = record_data
-            .volume
+        record_data.performance = record_data
+            .performance
             .checked_add(profit_add_sol)
-            .ok_or(ProgramError::InvalidInstructionData)?;
+            .ok_or(ProgramError::InsufficientFunds)?;
         msg!("add volumn");
 
         record_data.pack_into_slice(&mut data_ref);
 
-        if now_user_volumn > record_data.volume {
-            *up_level += 1;
-        }
-
-    } else {
-        msg!("should exist");
-        return Err(ProgramError::InvalidArgument);
+        return Ok(record_data.performance);
     }
 
-    Ok(())
+    msg!("should exist");
+    return Err(ProgramError::InvalidArgument);
+    
 }
 
-pub fn promotion_inspect(
-    who_vault: u8,
-    accounts: &Accounts<'_, AccountInfo<'_>>,
-    refferrer_lamports: u64,
-    domain_price_lamports: u64,
+fn up_level_to(
+    record_will_up: Option<&AccountInfo>,
+    record_the_levfel: Option<&AccountInfo>
 ) -> ProgramResult {
 
-    let user_refferrer_record = accounts.refferrer_record;
-    let mut user_record_data = RefferrerRecordHeader::unpack_from_slice(
-        &user_refferrer_record.data.borrow()
-    )?;
+    if let (Some(record_up), Some(record_level)) = (record_will_up, record_the_levfel){
+        let new_referrer = 
+            ReferrerRecordHeader::unpack_from_slice(&record_level.try_borrow_data()?)?.referrer_account;
 
-    user_record_data.volume = 
-        user_record_data.volume
-        .checked_add(domain_price_lamports)
-        .ok_or(ProgramError::InvalidInstructionData)?;
-    
-    let mut up_level: u8 = 0;
-    let now_user_volume = user_record_data.volume;
+        let mut data_ref = record_up.try_borrow_mut_data()?;
+        let mut record_up_data = 
+            ReferrerRecordHeader::unpack_from_slice(&data_ref)?;
+        
+        record_up_data.referrer_account = new_referrer;
+        record_up_data.pack_into_slice(&mut data_ref);
+
+        msg!("update to {:?}", new_referrer);
+
+        Ok(())
+    }else {
+        msg!("shoul provide the two accounts");
+        return Err(ProgramError::InvalidArgument);  
+    } 
+}
+
+/// Check if referrer A and referrer B need to upgrade, and then perform the upgrade operation.
+pub fn promotion_inspect(
+    // which referrer is vault
+    // 0 -- no vault 1 -- A 2 -- B 3 -- C 
+    who_vault: u8,
+    accounts: &Accounts<'_, AccountInfo<'_>>,
+    referrer_lamports: u64,
+) -> ProgramResult {
 
     match who_vault {
         0 => {
+            // chain new_owner -> A -> B -> C -> ...
             msg!("all not vault");
-            refferrer_profit_add(
-                accounts.refferrer_c_record,
-                share(refferrer_lamports, 13)?,
-                &mut up_level,
-                now_user_volume,
+            let a_performance = referrer_profit_add(
+                accounts.referrer_a_record,
+                share(referrer_lamports, 52)?,
             )?;
-            refferrer_profit_add(
-                accounts.refferrer_b_record,
-                share(refferrer_lamports, 26)?,
-                &mut up_level,
-                now_user_volume,
-            )?;
-            refferrer_profit_add(
-                accounts.refferrer_a_record,
-                share(refferrer_lamports, 52)?,
-                &mut up_level,
-                now_user_volume,
-            )?;
-        }
-        1 => {
-            msg!("refferrer A is vault");
-        }
-        2 => {
-            msg!("refferrer B is vault");
-            refferrer_profit_add(
-                accounts.refferrer_a_record,
-                share(refferrer_lamports, 52)?,
-                &mut up_level,
-                now_user_volume,
-            )?;
-        }
-        3 => {
-            msg!("refferrer C is vault");
-            refferrer_profit_add(
-                accounts.refferrer_b_record,
-                share(refferrer_lamports, 26)?,
-                &mut up_level,
-                now_user_volume,
-            )?;
-            refferrer_profit_add(
-                accounts.refferrer_a_record,
-                share(refferrer_lamports, 52)?,
-                &mut up_level,
-                now_user_volume,
-            )?;
-        }
-        _ => {
-            return Err(ProgramError::InvalidArgument);
-        }
-    }
 
-    match up_level {
-        0 => {
-            msg!("won't promote");
-        }
-        1 => {
-            msg!("uplevel 1");
-            if let Some(refferrer_b) = accounts.refferrer_b {
-                user_record_data.refferrer_account
-                    = *refferrer_b.key
-            }else {
-                msg!("should has refferrer b");
-                return Err(ProgramError::InvalidArgument);
-            }
-        }
-        2 => {
-            msg!("uplevel 2");
-            if let Some(refferrer_c) = accounts.refferrer_c{
-                user_record_data.refferrer_account
-                    = *refferrer_c.key
-            } else {
-                msg!("should has refferrer c");
-                return Err(ProgramError::InvalidArgument);
-            }
-        }
-        3 => {
-            msg!("uplevel 3");
-            if let Some(refferrer_c_record) = accounts.refferrer_c_record{
-                let refferrer_c_record_data = RefferrerRecordHeader::unpack_from_slice(
-                    &refferrer_c_record.data.borrow()
+            let b_performance = referrer_profit_add(
+                accounts.referrer_b_record,
+                share(referrer_lamports, 26)?,
+            )?;
+            
+            let c_performance = referrer_profit_add(
+                accounts.referrer_c_record,
+                share(referrer_lamports, 13)?
+            )?;
+
+            // check b frist 
+            if b_performance > c_performance {
+                up_level_to(
+                    accounts.referrer_b_record, 
+                    accounts.referrer_c_record
                 )?;
+                msg!("up b to c's level")
+            }
 
-                user_record_data.refferrer_account
-                    = refferrer_c_record_data.refferrer_account;
-            } else {
-                msg!("should has refferrer d");
-                return Err(ProgramError::InvalidArgument);
+            if a_performance > b_performance {
+                up_level_to(
+                    accounts.referrer_a_record, 
+                    accounts.referrer_b_record
+                )?;
+            }
+        }
+        1 => {
+            msg!("referrer A is vault");
+        }
+        2 => {
+            msg!("referrer B is vault, means A is highest level");
+            referrer_profit_add(
+                accounts.referrer_a_record,
+                share(referrer_lamports, 52)?
+            )?;
+        }
+        3 => {
+            msg!("referrer C is vault, only check wheather A is going to up level");
+            let a_performance = referrer_profit_add(
+                accounts.referrer_a_record,
+                share(referrer_lamports, 52)?,
+            )?;
+
+            let b_performance = referrer_profit_add(
+                accounts.referrer_b_record,
+                share(referrer_lamports, 26)?,
+            )?;
+
+            if a_performance > b_performance {
+                up_level_to(
+                    accounts.referrer_a_record, 
+                    accounts.referrer_b_record
+                )?;
             }
         }
         _ => {
-            msg!("error");
             return Err(ProgramError::InvalidArgument);
         }
     }
-
-    user_record_data.pack_into_slice(&mut user_refferrer_record.try_borrow_mut_data()?);
-
-
-    Ok(())
-}
-
-pub fn add_domain_origin_owner_volume(
-    accounts: &Accounts<'_, AccountInfo<'_>>,
-    domain_price: u64,
-) -> ProgramResult {
-
-    let origin_owner = accounts.origin_name_account_owner;
-    let origin_owner_refferrer_record = accounts.origin_name_owner_record;
-
-    let (origin_owner_refferrer_record_key, _) = get_refferrer_record_key(origin_owner.key);
-    check_account_key(origin_owner_refferrer_record, &origin_owner_refferrer_record_key)?;
-   
-    let mut origin_owner_record_data = RefferrerRecordHeader::unpack_from_slice(
-        &origin_owner_refferrer_record.data.borrow()
-    )?;
-
-    let get_lamports = share(domain_price, 95)?;
-
-    msg!("origin owner add: {:?}", origin_owner_record_data.volume);
-    
-    origin_owner_record_data.profit =
-        origin_owner_record_data.profit
-        .checked_add(get_lamports)
-        .ok_or(ProgramError::InvalidArgument)?;
-
-    origin_owner_record_data.volume =
-        origin_owner_record_data.volume
-        .checked_add(get_lamports)
-        .ok_or(ProgramError::InvalidArgument)?;
-
-    origin_owner_record_data.pack_into_slice(&mut origin_owner_refferrer_record.try_borrow_mut_data()?);
 
     Ok(())
 }

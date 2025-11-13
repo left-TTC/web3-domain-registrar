@@ -1,6 +1,8 @@
 use solana_program::{
-     clock::Clock, program_error::ProgramError, sysvar::Sysvar 
+     clock::Clock, msg, program_error::ProgramError, sysvar::Sysvar 
 };
+
+use crate::state::ReferrerRecordHeader;
 
 
 #[cfg(not(feature = "devnet"))]
@@ -36,4 +38,18 @@ pub fn check_state_time(
 pub fn get_now_time() -> Result<i64, ProgramError> {
     let clock = Clock::get()?;
     Ok(clock.unix_timestamp)
+}
+
+
+pub fn if_referrer_valid(
+    referrer_state: ReferrerRecordHeader
+) -> Result<bool, ProgramError> {
+    let now = get_now_time()?;
+
+    if now <= referrer_state.create_time + 1 {
+        msg!("this account needs to wait for one day");
+        return Ok(false);
+    }
+
+    Ok(true)
 }

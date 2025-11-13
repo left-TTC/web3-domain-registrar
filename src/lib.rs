@@ -15,16 +15,13 @@ pub use error::Error;
 declare_id_with_central_state!("jCebN34bUfdeUYJT13J1yG16XWQpt5PDx6Mse9GUqhR");
 
 #[cfg(feature = "devnet")]
-declare_id_with_central_state!("AiVEjCj7pihJFLoLjr2RxnJYTkVwr5Y4zftikEc5hb5z");
+declare_id_with_central_state!("2xf73UX5CKCMwUznykZthaxnx2yq1QYjuNojatTeGfT7");
 
 
 #[cfg(feature = "devnet")]
 pub mod constants {
         
     use solana_program::{pubkey, pubkey::Pubkey};
-    use web3_domain_name_service::utils::get_seeds_and_key;
-
-    use crate::{central_state, utils::get_hashed_name};
 
     pub const WSOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
 

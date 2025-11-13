@@ -15,6 +15,7 @@ pub mod initiate_root;
 pub mod settle_auction;
 pub mod start_project;
 pub mod confirm_root_admin;
+pub mod extract_admin;
 pub mod extract;
 
 pub struct Processor {}
@@ -65,6 +66,12 @@ impl Processor {
                     .map_err(|_| ProgramError::InvalidArgument)?;
                 settle_auction::process_settle_auction(program_id, accounts, params)?;
             }
+            ProgramInstruction::Extract => {
+                msg!("Instruction: user extract");
+                let params = extract::Params::try_from_slice(instruction_data)
+                    .map_err(|_| ProgramError::InvalidArgument)?;
+                extract::process_extract(program_id, accounts, params)?;
+            }
             ProgramInstruction::StartProject => {
                 msg!("Instruction: start Project");
                 let params = start_project::Params::try_from_slice(instruction_data)
@@ -77,9 +84,12 @@ impl Processor {
                     .map_err(|_| ProgramError::InvalidArgument)?;
                 confirm_root_admin::process_confirm_root(program_id, accounts, params)?;
             }
-            ProgramInstruction::Extract => {
-
-            }
+            ProgramInstruction::ExtractAdmin => {
+                msg!("Instruction: admin extract");
+                let params = extract_admin::Params::try_from_slice(instruction_data)
+                    .map_err(|_| ProgramError::InvalidArgument)?;
+                extract_admin::process_extract_admin(program_id, accounts, params)?;
+            }   
         }
 
         Ok(())

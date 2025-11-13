@@ -21,7 +21,7 @@ use solana_program::{
 
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{constants::{SYSTEM_ID, return_vault_key}, state::{NameStateRecordHeader, RefferrerRecordHeader, get_name_state_key, get_refferrer_record_key}, utils::{TIME, check_state_time, get_now_time, share}};
+use crate::{constants::{SYSTEM_ID, return_vault_key}, state::{NameStateRecordHeader, ReferrerRecordHeader, get_name_state_key, get_referrer_record_key}, utils::{TIME, check_state_time, get_now_time, if_referrer_valid, share}};
 
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
@@ -29,7 +29,7 @@ use crate::{constants::{SYSTEM_ID, return_vault_key}, state::{NameStateRecordHea
 pub struct Params {
     pub name: String,
     pub my_price_sol: u64,
-    pub refferrer_key: Pubkey,
+    pub referrer_key: Pubkey,
 }
 
 #[derive(InstructionsAccount)]
@@ -45,20 +45,20 @@ pub struct Accounts<'a, T> {
     /// The buyer account         
     #[cons(writable, signer)]
     pub fee_payer: &'a T,
-    // it's not necessary to confirm the refferrer
+    // it's not necessary to confirm the referrer
     /// last bidder
     #[cons(writable)]
     pub last_bidder: &'a T,
     /// the vault
     #[cons(writable)]
     pub vault: &'a T,
-    /// usr's refferrer record
+    /// usr's referrer record
     /// we must check it, otherwise, some users may not have a referer in the end.
     #[cons(writable)]
-    pub refferrer_record_account: &'a T,
-    /// refferrer's refferrer record account
-    pub superior_refferrer_record: Option<&'a T>,
-    /// if need create the refferrer record, we need the rent sysvar
+    pub referrer_record_account: &'a T,
+    /// referrer's referrer record account
+    pub superior_referrer_record: Option<&'a T>,
+    /// if need create the referrer record, we need the rent sysvar
     pub rent: Option<&'a T>,
 }
 
@@ -74,8 +74,8 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             fee_payer: next_account_info(accounts_iter)?,
             last_bidder: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
-            refferrer_record_account: next_account_info(accounts_iter)?,
-            superior_refferrer_record: next_account_info(accounts_iter).ok(),
+            referrer_record_account: next_account_info(accounts_iter)?,
+            superior_referrer_record: next_account_info(accounts_iter).ok(),
             rent: next_account_info(accounts_iter).ok(),
         })
     }
@@ -131,84 +131,88 @@ pub fn process_increase_price<'a, 'b: 'a>(
     msg!("vault ok");
 
     // the referreer record account
-    let refferrer_record_account = accounts.refferrer_record_account;
-    let (refferrer_record, refferrer_seeds) = get_refferrer_record_key(&accounts.fee_payer.key);
-    check_account_key(refferrer_record_account, &refferrer_record)?;
-    msg!("payer's refferrer record account ok");
+    let referrer_record_account = accounts.referrer_record_account;
+    let (referrer_record, referrer_seeds) = get_referrer_record_key(&accounts.fee_payer.key);
+    check_account_key(referrer_record_account, &referrer_record)?;
+    msg!("payer's referrer record account ok");
 
-    if accounts.refferrer_record_account.data_len() == 0 {
-        msg!("new user, should init the refferrer account");
+    if accounts.referrer_record_account.data_is_empty() {
+        msg!("new user, should init the referrer account");
 
         if let Some(rent_sysvar) = accounts.rent {
             let rent = Rent::from_account_info(rent_sysvar)?;
-            let refferrer_record_lamports = rent.minimum_balance(RefferrerRecordHeader::LEN);
+            let referrer_record_lamports = rent.minimum_balance(ReferrerRecordHeader::LEN);
 
-            if params.refferrer_key != vault_key {
+            if params.referrer_key != vault_key {
                 msg!("payer use other's invitation");
-                if let Some(superior_refferrer) = accounts.superior_refferrer_record {
-                    let (superior_refferrer_key, _) = get_refferrer_record_key(&params.refferrer_key);
-                    check_account_key(superior_refferrer, &superior_refferrer_key)?;
+                if let Some(superior_referrer) = accounts.superior_referrer_record {
+                    let (superior_referrer_key, _) = get_referrer_record_key(&params.referrer_key);
+                    check_account_key(superior_referrer, &superior_referrer_key)?;
 
-                    msg!("refferr's refferrer record account ok");
+                    msg!("refferr's referrer record account ok");
                     
-                    let _state =  
-                        RefferrerRecordHeader::unpack_from_slice(&superior_refferrer.data.borrow())?;
-                    msg!("refeerrer's refferrer is valid");
+                    let referrer_referrer_state =  
+                    ReferrerRecordHeader::unpack_from_slice(&superior_referrer.data.borrow())?;
+
+                    if !if_referrer_valid(referrer_referrer_state)?{
+                        return Err(ProgramError::InvalidArgument);
+                    }
                 } else {
-                    msg!("you should provide your refferrer's refferrer record while your refferrer isn't vault"); 
+                    msg!("you should provide your referrer's referrer record while your referrer isn't vault"); 
                     return Err(ProgramError::InvalidArgument);
                 }
             }
 
             invoke(
             &system_instruction::transfer(
-                accounts.fee_payer.key, &refferrer_record, refferrer_record_lamports), 
+                accounts.fee_payer.key, &referrer_record, referrer_record_lamports), 
                 &[
                     accounts.fee_payer.clone(),
-                    accounts.refferrer_record_account.clone(),
+                    accounts.referrer_record_account.clone(),
                     accounts.system_program.clone(),
                 ],
             )?;
 
             invoke_signed(
                 &system_instruction::allocate(
-                    &refferrer_record, 
-                    RefferrerRecordHeader::LEN as u64
+                    &referrer_record, 
+                    ReferrerRecordHeader::LEN as u64
                 ), 
-                &[accounts.refferrer_record_account.clone(), accounts.system_program.clone()], 
-                &[&refferrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+                &[accounts.referrer_record_account.clone(), accounts.system_program.clone()], 
+                &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
             )?;
 
             invoke_signed(
-                &system_instruction::assign(&refferrer_record, &crate::ID),
-                &[accounts.refferrer_record_account.clone(), accounts.system_program.clone()],
-                &[&refferrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+                &system_instruction::assign(&referrer_record, &crate::ID),
+                &[accounts.referrer_record_account.clone(), accounts.system_program.clone()],
+                &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
             )?;
 
-            msg!("create payer's refferrer record account");
+            msg!("create payer's referrer record account");
 
-            let record = RefferrerRecordHeader::new(
-                params.refferrer_key
+            let record = ReferrerRecordHeader::new(
+                params.referrer_key,
+                get_now_time()?
             );
 
-            let mut data = accounts.refferrer_record_account.try_borrow_mut_data()?;
+            let mut data = accounts.referrer_record_account.try_borrow_mut_data()?;
             record.pack_into_slice(&mut data);
 
-            msg!("write in refferrer record account");
+            msg!("write in referrer record account");
         }else {
             msg!("should give a rent");
             return Err(ProgramError::InvalidArgument);
         }
 
     }else {
-        let buyer_refferrer_record =
-            RefferrerRecordHeader::unpack_from_slice(&accounts.refferrer_record_account.data.borrow())?;
+        let buyer_referrer_record =
+            ReferrerRecordHeader::unpack_from_slice(&accounts.referrer_record_account.data.borrow())?;
 
-        if buyer_refferrer_record.refferrer_account != params.refferrer_key {
-            msg!("the refferrer you provied is fault");
+        if buyer_referrer_record.referrer_account != params.referrer_key {
+            msg!("the referrer you provied is fault");
             return Err(ProgramError::InvalidArgument);
         }
-        msg!("refferrer ok");
+        msg!("referrer ok");
     }
 
 

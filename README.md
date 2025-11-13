@@ -22,7 +22,7 @@ cargo build-sbf
 |WEB3_REGISTRAR  |       None        |       None        |   Root State Account |
 |WEB3_REGISTRAR |       Register_Central        |       Root Domain        |   Name State Account |
 |WEB3_REGISTRAR  |       Register_Central        |       Register_Central        |   Vault |
-|WEB3_REGISTRAR  |       WEB3_REGISTRAR        |       WEB3_REGISTRAR        |   refferrer Record |
+|WEB3_REGISTRAR  |       WEB3_REGISTRAR        |       WEB3_REGISTRAR        |   referrer Record |
 |WEB3_REGISTRAR  |       WEB3_REGISTRAR        |       None        |   Name State Reverse |
 
 > About account structure
@@ -38,9 +38,9 @@ cargo build-sbf
 
 ### 1. Refferer
 Every usr will set a refereer 
-> We plan to distribute 90% of the profits to the refferrers in the next three levels (only create).
+> We plan to distribute 90% of the profits to the referrers in the next three levels (only create).
 #### Specific profit sharing ratio
-> In this case, we assume that the buyer's name is A, and A's refferrer is B, B's refferrer is C, C's is D
+> In this case, we assume that the buyer's name is A, and A's referrer is B, B's referrer is C, C's is D
 
 ##### Initial domain name creation
 |Name|Expenditure|Income|Responsibility|

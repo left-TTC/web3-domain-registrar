@@ -63,27 +63,27 @@ pub struct Accounts<'a, T> {
     pub vault: &'a T,
     /// new domain owner
     pub new_domain_owner: &'a T,
-    /// new owner's refferrer record
+    /// new owner's referrer record
     #[cons(writable)]
-    pub refferrer_record: &'a T,
-    /// buyer's refferrer -- we named A
+    pub referrer_record: &'a T,
+    /// buyer's referrer -- we named A
     #[cons(writable)]
-    pub refferrer_a: &'a T,
-    /// A's refferrer record
+    pub referrer_a: &'a T,
+    /// A's referrer record
     #[cons(writable)]
-    pub refferrer_a_record: Option<&'a T>,
-    /// A's refferrer -- named B
+    pub referrer_a_record: Option<&'a T>,
+    /// A's referrer -- named B
     #[cons(writable)]
-    pub refferrer_b: Option<&'a T>,
-    /// B's refferrer record
+    pub referrer_b: Option<&'a T>,
+    /// B's referrer record
     #[cons(writable)]
-    pub refferrer_b_record: Option<&'a T>,
-    /// B's refferrer -- named C
+    pub referrer_b_record: Option<&'a T>,
+    /// B's referrer -- named C
     #[cons(writable)]
-    pub refferrer_c: Option<&'a T>,
-    /// C's refferrer record
+    pub referrer_c: Option<&'a T>,
+    /// C's referrer record
     #[cons(writable)]
-    pub refferrer_c_record: Option<&'a T>,
+    pub referrer_c_record: Option<&'a T>,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -105,13 +105,13 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             origin_name_owner_record: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
             new_domain_owner:next_account_info(accounts_iter)?,
-            refferrer_record: next_account_info(accounts_iter)?,
-            refferrer_a: next_account_info(accounts_iter)?,
-            refferrer_a_record: next_account_info(accounts_iter).ok(),
-            refferrer_b: next_account_info(accounts_iter).ok(),
-            refferrer_b_record: next_account_info(accounts_iter).ok(),
-            refferrer_c: next_account_info(accounts_iter).ok(),
-            refferrer_c_record: next_account_info(accounts_iter).ok(),
+            referrer_record: next_account_info(accounts_iter)?,
+            referrer_a: next_account_info(accounts_iter)?,
+            referrer_a_record: next_account_info(accounts_iter).ok(),
+            referrer_b: next_account_info(accounts_iter).ok(),
+            referrer_b_record: next_account_info(accounts_iter).ok(),
+            referrer_c: next_account_info(accounts_iter).ok(),
+            referrer_c_record: next_account_info(accounts_iter).ok(),
         })
     }
 
@@ -133,7 +133,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     }
 }
 
-// all pepole on the refferrer chain can confirm the domain
+// all pepole on the referrer chain can confirm the domain
 
 pub fn process_settle_auction<'a, 'b: 'a>(
     _program_id: &Pubkey,

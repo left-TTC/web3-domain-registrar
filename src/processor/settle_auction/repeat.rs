@@ -1,12 +1,11 @@
 
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, msg, program::{invoke_signed}, program_error::ProgramError
+    account_info::AccountInfo, entrypoint::ProgramResult, msg,  program_error::ProgramError
 };
 use web3_domain_name_service::state::NameRecordHeader;
 use web3_utils::check::check_account_key;
-
-use crate::{central_state, constants::return_vault_key, cpi::Cpi, state::NameStateRecordHeader, utils::{promotion_inspect::add_domain_origin_owner_volume, share, transfer_by_chain::transfer_by_refferrer_chain}};
-use solana_system_interface::instruction as system_instruction;
+use solana_program::program_pack::Pack;
+use crate::{central_state, constants::return_vault_key, cpi::Cpi, state::{NameStateRecordHeader, get_referrer_record_key, ReferrerRecordHeader}, utils::{share, transfer_by_chain::transfer_by_referrer_chain}};
 
 
 // Here we need to consider calls to the same address using different names.
@@ -17,11 +16,6 @@ pub fn repeat_settle(
     name_state_data: &NameStateRecordHeader,
 ) -> ProgramResult {
 
-    if name_state_data.highest_price < name_account_data.custom_price{
-        msg!("your price is too low");
-        return Err(ProgramError::InvalidArgument);
-    }
-
     check_account_key(accounts.origin_name_account_owner, &name_account_data.owner)?;
 
     let vault = accounts.vault;
@@ -31,32 +25,33 @@ pub fn repeat_settle(
     let domain_price = name_state_data.highest_price;
     msg!("transaction price: {:?}", domain_price);
 
-    // invoke_signed(
-    //     &system_instruction::transfer(
-    //         vault.key,
-    //         accounts.origin_name_account_owner.key,
-    //         share(domain_price, 95)?,
-    //     ),
-    //     &[
-    //         vault.clone(),
-    //         accounts.origin_name_account_owner.clone(),
-    //         accounts.system_program.clone(),
-    //     ],
-    //     &[vault_seeds], 
-    // )?;
-    let domain_price_lamports = share(domain_price, 52)?;
-    **vault.try_borrow_mut_lamports()? -= domain_price_lamports;
-    **accounts.refferrer_a.try_borrow_mut_lamports()? += domain_price_lamports;
-
-    msg!("transfer to origin owner: {:?}", domain_price_lamports);
-    msg!("transfer the domain fees to domain oringinal owner ok");
-
-    transfer_by_refferrer_chain(
-        &accounts, share(domain_price, 5)?, domain_price
+    transfer_by_referrer_chain(
+        &accounts, share(domain_price, 5)?
     )?;
-    msg!("transfer and promote ok");
+    msg!("add referrer profit and performance and up level ok");
 
-    add_domain_origin_owner_volume(&accounts, domain_price)?;
+    let origin_owner = accounts.origin_name_account_owner;
+    let origin_owner_referrer_record = accounts.origin_name_owner_record;
+
+    let (origin_owner_referrer_record_key, _) = get_referrer_record_key(origin_owner.key);
+    check_account_key(origin_owner_referrer_record, &origin_owner_referrer_record_key)?;
+   
+    let mut data_origin_ref = origin_owner_referrer_record.try_borrow_mut_data()?;
+    let mut origin_owner_record_data = 
+        ReferrerRecordHeader::unpack_from_slice(
+            &data_origin_ref
+        )?;
+
+    let get_lamports = share(domain_price, 95)?;
+    
+    // the domain origin owner's account will only add profit
+    origin_owner_record_data.profit =
+        origin_owner_record_data.profit
+        .checked_add(get_lamports)
+        .ok_or(ProgramError::InvalidArgument)?;
+
+    origin_owner_record_data.pack_into_slice(&mut *data_origin_ref);
+    msg!("add origin owner only profit ok: {:?}", get_lamports);
 
     let central_state_signer_seeds: &[&[u8]] = &[&crate::ID.to_bytes(), &[central_state::NONCE]];
     Cpi::transfer_name_account(

@@ -16,12 +16,12 @@ pub fn initialize_settle(
     hashed_reverse_lookup: Vec<u8>,
 ) -> ProgramResult {
 
-    msg!("now the price: {:?}, and refferrer all", name_state_data.highest_price);
+    msg!("now the price: {:?}, and referrer all", name_state_data.highest_price);
     let (vault_key, _) = return_vault_key();
     check_account_key(accounts.vault, &vault_key)?;
 
-    transfer_by_chain::transfer_by_refferrer_chain(
-        &accounts, name_state_data.highest_price, name_state_data.highest_price
+    transfer_by_chain::transfer_by_referrer_chain(
+        &accounts, name_state_data.highest_price,
     )?;
     msg!("transfer and promote ok");
     

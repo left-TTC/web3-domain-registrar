@@ -6,11 +6,10 @@ use web3_utils::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    program_pack::Pack,
     account_info::{next_account_info, AccountInfo}, entrypoint::ProgramResult, msg, program_error::ProgramError, pubkey::Pubkey
 };
 
-use crate::{state::ReferrerRecordHeader};
+use crate::{constants::{ADMIN_ANDY, ADMIN_FANMOCHENG}, utils::share};
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
@@ -23,9 +22,8 @@ pub struct Params {
 /// The required accounts for the `create` instruction
 pub struct Accounts<'a, T> { 
     #[cons(writable, signer)]
-    pub user: &'a T,
-    #[cons(writable)]
-    pub user_referrer_record: &'a T,
+    pub admin_signer: &'a T,
+    pub admin_other: &'a T,
     #[cons(writable)]
     pub vault: &'a T,
 }
@@ -36,22 +34,34 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     ) -> Result<Self, ProgramError> {
         let accounts_iter = &mut accounts.iter();
         Ok(Accounts {
-            user:next_account_info(accounts_iter)?,
-            user_referrer_record: next_account_info(accounts_iter)?,
+            admin_signer:next_account_info(accounts_iter)?,
+            admin_other: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
         })
     }
 
     pub fn check(&self) -> Result<(), ProgramError> {
 
-        check_signer(self.user).unwrap();
-        msg!("user signature ok");
+        let admin_one = self.admin_signer.key;
+        if admin_one != &ADMIN_ANDY && admin_one != &ADMIN_FANMOCHENG {
+            msg!("admin error");
+            return Err(ProgramError::InvalidArgument);
+        }
+        let admin_two = self.admin_other.key;
+        if admin_two != &ADMIN_ANDY && admin_two != &ADMIN_FANMOCHENG {
+            msg!("admin error");
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        // Check signer
+        check_signer(self.admin_signer).unwrap();
+        msg!("fee_payer signature ok");
 
         Ok(())
     }
 }
 
-pub fn process_extract<'a, 'b: 'a>(
+pub fn process_extract_admin<'a, 'b: 'a>(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
     params: Params,
@@ -60,21 +70,13 @@ pub fn process_extract<'a, 'b: 'a>(
     let accounts = Accounts::parse(accounts)?;
     accounts.check()?;
 
-    let mut data_ref = accounts.user_referrer_record.try_borrow_mut_data()?;
-    let mut record_data = 
-        ReferrerRecordHeader::unpack_from_slice(&data_ref)?;
+    let transfer_out_lamports = share(params.extraction, 50)?;
 
-    if record_data.profit - params.extraction <= 10000 {
-        msg!("limitation");
-        return Err(ProgramError::InvalidArgument);
-    }
+    **accounts.vault.try_borrow_mut_lamports()? -= transfer_out_lamports * 2;
 
-    **accounts.vault.try_borrow_mut_lamports()? -= params.extraction;
-    **accounts.user.try_borrow_mut_lamports()? += params.extraction;
-    msg!("transfer ok");
+    **accounts.admin_signer.try_borrow_mut_lamports()? += transfer_out_lamports;
+    **accounts.admin_other.try_borrow_mut_lamports()? += transfer_out_lamports;
 
-    record_data.profit -= params.extraction;
-    record_data.pack_into_slice(&mut data_ref); 
 
     Ok(())
 }

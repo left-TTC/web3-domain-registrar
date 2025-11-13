@@ -11,8 +11,9 @@ pub enum ProgramInstruction {
     StartName,
     IncreasePrice,
     SettleName,
+    Extract,
     StartProject,
     ConfirmRoot,
-    Extract,
+    ExtractAdmin,
 }
 

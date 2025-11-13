@@ -99,7 +99,7 @@ pub fn process_start_project(
 ) -> ProgramResult {
     let accounts = Accounts::parse(accounts)?;
 
-    if params.start_domain != "test" {
+    if params.start_domain != "fmc" {
         msg!("start should be test");
         return Err(ProgramError::InvalidArgument);
     }
