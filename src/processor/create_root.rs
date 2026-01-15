@@ -8,15 +8,12 @@ use web3_utils::{
     check::check_account_owner
 };
 use solana_program::{
-    msg,
+    msg, rent::Rent, sysvar::Sysvar,
 };
-use web3_domain_name_service::{utils::get_seeds_and_key};
+use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 
 use crate::{
-    central_state, 
-    constants::{SYSTEM_ID}, 
-    state::{write_data, RootStateRecordHeader}, 
-    utils::{ get_hashed_name, CREATE_ROOT_TARGET}
+    central_state, constants::{SYSTEM_ID, return_vault_key}, cpi::Cpi, state::{ReverseLookup, RootStateRecordHeader, write_data}, utils::{ CREATE_ROOT_TARGET, get_hashed_name}
 };
 
 use {
@@ -46,6 +43,8 @@ pub struct Params {
 #[derive(InstructionsAccount)]
 pub struct Accounts<'a, T> {
     /// The system program account
+    pub name_service: &'a T,
+    /// The system program account
     pub system_program: &'a T,
     /// The vault account     
     #[cons(writable)]
@@ -58,19 +57,31 @@ pub struct Accounts<'a, T> {
     pub root_state_account: &'a T,
     /// The registrar central state account
     pub central_state: &'a T,
+    #[cons(writable)]
+    pub root_name_account: &'a T,
+    /// root domain's reverse lookup account
+    #[cons(writable)]
+    pub root_reverse_lookup: &'a T,
+    /// The rent sysvar account
+    pub rent_sysvar: &'a T,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     pub fn parse(accounts: &'a [AccountInfo<'b>]) -> Result<Self, ProgramError> {
         let accounts_iter = &mut accounts.iter();
         let accounts = Accounts {
+            name_service: next_account_info(accounts_iter)?,
             system_program: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
             fee_payer: next_account_info(accounts_iter)?,
             root_state_account: next_account_info(accounts_iter)?,
             central_state: next_account_info(accounts_iter)?,
+            root_name_account: next_account_info(accounts_iter)?,
+            root_reverse_lookup: next_account_info(accounts_iter)?,
+            rent_sysvar: next_account_info(accounts_iter)?,
         };
 
+        check_account_key(accounts.name_service, &web3_domain_name_service::ID)?;
         check_account_key(accounts.system_program, &SYSTEM_ID)?;
         check_account_key(accounts.central_state, &central_state::KEY)?;
 
@@ -97,12 +108,7 @@ pub fn process_create_root(
     let accounts = Accounts::parse(accounts)?;
     msg!("parse ok");
 
-    let (vault, _) = get_seeds_and_key(
-        &crate::ID, 
-        get_hashed_name("vault"), 
-        Some(&central_state::KEY), 
-        Some(&central_state::KEY)
-    );
+    let (vault, _) = return_vault_key();
     check_account_key(accounts.vault, &vault)?;
     msg!("check vault ok");
 
@@ -145,8 +151,65 @@ pub fn process_create_root(
 
     if added_amount > CREATE_ROOT_TARGET {
         difference = added_amount - CREATE_ROOT_TARGET;
-    }
 
+        let root_name_account = accounts.root_name_account;
+        let (root_name_key, _) = get_seeds_and_key(
+            accounts.name_service.key,
+            hashed_name_account.clone(), 
+            None, 
+            None
+        );
+        check_account_key(root_name_account, &root_name_key)?;
+        msg!("root_name_account ok");
+
+        let hashed_reverse_lookup = get_hashed_name(&root_name_key.to_string());
+        let root_reverse_account = accounts.root_reverse_lookup;
+        let (reserse_look_up, _) = get_seeds_and_key(
+            accounts.name_service.key, 
+            hashed_reverse_lookup.clone(), 
+            Some(&central_state::KEY), 
+            None
+        );
+        check_account_key(root_reverse_account, &reserse_look_up)?;
+        msg!("root_reverse_lookup ok");
+
+        let rent = Rent::from_account_info(accounts.rent_sysvar)?;
+        let central_state_signer_seeds: &[&[u8]] = &[&crate::ID.to_bytes(), &[central_state::NONCE]];
+
+        let root_name_lamports = rent.minimum_balance(NameRecordHeader::LEN);
+
+        msg!("create root account");
+        Cpi::create_root_name_account(
+            accounts.name_service,
+            accounts.system_program,
+            root_name_account,
+            accounts.fee_payer,
+            accounts.central_state,
+            hashed_name_account,
+            root_name_lamports,
+        )?;
+
+        msg!("create root reverse account");
+        if root_reverse_account.data_len() == 0 {
+            Cpi::create_reverse_lookup_account(accounts.name_service, 
+                accounts.system_program, 
+                accounts.root_reverse_lookup, 
+                accounts.fee_payer, 
+                params.root_name.clone(), 
+                hashed_reverse_lookup, 
+                accounts.central_state, 
+                accounts.rent_sysvar, 
+                central_state_signer_seeds, 
+                None, 
+                None
+            )?;
+        }
+
+        let lamports = rent.minimum_balance(ReverseLookup { name: params.root_name }.try_to_vec().unwrap().len() + NameRecordHeader::LEN) + root_name_lamports;
+
+        **accounts.vault.try_borrow_mut_lamports()? -= lamports;
+        **accounts.fee_payer.try_borrow_mut_lamports()? += lamports;
+    }
 
     invoke(
     &instruction::transfer(

@@ -22,9 +22,6 @@ declare_id_with_central_state!("2xf73UX5CKCMwUznykZthaxnx2yq1QYjuNojatTeGfT7");
 pub mod constants {
         
     use solana_program::{pubkey, pubkey::Pubkey};
-
-    pub const WSOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
-
     pub const SYSTEM_ID: Pubkey = pubkey!("11111111111111111111111111111111");
 
     pub const ADMIN_ANDY: Pubkey = pubkey!("DWNSuxCniY8m11DazRoN3VqvDZK8Sps2wgoQHWx3t4Sx");

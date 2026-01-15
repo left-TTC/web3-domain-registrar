@@ -8,7 +8,7 @@ use crate::state::ReferrerRecordHeader;
 #[cfg(not(feature = "devnet"))]
 pub const AUCTION_TIME_LIMIT: i64 = 259200;
 #[cfg(feature = "devnet")]
-pub const AUCTION_TIME_LIMIT: i64 = 600; // 10min
+pub const AUCTION_TIME_LIMIT: i64 = 120; // 10min
 
 #[derive(PartialEq)]
 pub enum TIME {
@@ -26,7 +26,9 @@ pub fn check_state_time(
         return Ok(TIME::ERROR)
     }
 
-    let auction_expiration_time = name_state_update_time + AUCTION_TIME_LIMIT;
+    let auction_expiration_time = name_state_update_time
+        .checked_add(AUCTION_TIME_LIMIT)
+        .ok_or(ProgramError::InvalidArgument)?;
 
     if auction_expiration_time > now_timestamp {
         return Ok(TIME::AUCTION)

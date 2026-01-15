@@ -3,7 +3,7 @@
 
 ## Deploy
 ```bash
-solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.json target/sbf-solana-solana/release/web3_domain_registrar.so  --use-rpc
+solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.json target/sbpf-solana-solana/release/web3_domain_registrar.so  --use-rpc
 ```
 
 ## Bulid

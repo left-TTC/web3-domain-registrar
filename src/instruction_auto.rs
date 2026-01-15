@@ -13,7 +13,6 @@ pub enum ProgramInstruction {
     SettleName,
     Extract,
     StartProject,
-    ConfirmRoot,
     ExtractAdmin,
 }
 

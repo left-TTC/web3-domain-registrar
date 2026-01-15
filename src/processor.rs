@@ -14,7 +14,6 @@ pub mod create_root;
 pub mod initiate_root;
 pub mod settle_auction;
 pub mod start_project;
-pub mod confirm_root_admin;
 pub mod extract_admin;
 pub mod extract;
 
@@ -77,12 +76,6 @@ impl Processor {
                 let params = start_project::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidArgument)?;
                 start_project::process_start_project(program_id, accounts, params)?;
-            }
-            ProgramInstruction::ConfirmRoot => {
-                msg!("Instruction: settle root domain");
-                let params = confirm_root_admin::Params::try_from_slice(instruction_data)
-                    .map_err(|_| ProgramError::InvalidArgument)?;
-                confirm_root_admin::process_confirm_root(program_id, accounts, params)?;
             }
             ProgramInstruction::ExtractAdmin => {
                 msg!("Instruction: admin extract");

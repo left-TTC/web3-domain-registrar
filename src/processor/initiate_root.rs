@@ -22,7 +22,7 @@ use solana_program::{
 };
 use solana_system_interface::instruction as system_instruction;
 use crate::{
-    central_state, constants::{SYSTEM_ID}, utils::{get_hashed_name, ADVANCED_STORAGE}
+    constants::{SYSTEM_ID, return_vault_key}, utils::{ADVANCED_STORAGE, get_hashed_name}
 };
 
 use crate::state::RootStateRecordHeader;
@@ -81,8 +81,8 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
 pub fn process_initiate_root(
     _program_id: &Pubkey,
-     accounts: &[AccountInfo],
-      params: Params
+    accounts: &[AccountInfo],
+    params: Params
 ) -> ProgramResult {
     let accounts = Accounts::parse(accounts)?;
 
@@ -106,12 +106,7 @@ pub fn process_initiate_root(
     );
     check_account_key(accounts.root_name_account, &root_name_account)?;
 
-    let (vault, _) = get_seeds_and_key(
-        &crate::ID, 
-        get_hashed_name("vault"), 
-        Some(&central_state::KEY), 
-        Some(&central_state::KEY)
-    );
+    let (vault, _) = return_vault_key();
     check_account_key(accounts.vault, &vault)?;
     msg!("check vault ok");
 
@@ -160,7 +155,7 @@ pub fn process_initiate_root(
         msg!("root state length err"); 
         return Err(ProgramError::AccountAlreadyInitialized);
     }
-    msg!("crea root state account ok");
+    msg!("create root state account ok");
 
     invoke(
     &system_instruction::transfer(

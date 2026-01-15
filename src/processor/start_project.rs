@@ -24,7 +24,7 @@ use solana_program::{
 };
 use solana_system_interface::instruction as system_instruction;
 use crate::{
-    central_state, constants::{ ADMIN_ANDY, ADMIN_FANMOCHENG, SYSTEM_ID, return_vault_key}, cpi::Cpi, utils::{PROJECT_START, get_hashed_name}
+    central_state, constants::{ ADMIN_ANDY, ADMIN_FANMOCHENG, SYSTEM_ID, return_vault_key}, cpi::Cpi, utils::{get_hashed_name}
 };
 
 
@@ -136,7 +136,7 @@ pub fn process_start_project(
         &system_instruction::create_account(
             accounts.administrator.key, 
             &vault_key, 
-            PROJECT_START, 
+            0, 
             0, 
             &crate::ID
         ), 
