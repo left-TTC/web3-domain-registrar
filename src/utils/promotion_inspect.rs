@@ -6,7 +6,7 @@ use solana_program::pubkey::Pubkey;
 use solana_program::program_pack::Pack;
 
 
-use crate::processor::settle_auction::Accounts;
+use crate::processor::finalize_name::Accounts;
 use crate::state::{ReferrerRecordHeader};
 use crate::utils::share;
 

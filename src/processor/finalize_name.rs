@@ -15,7 +15,7 @@ use solana_program::{
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 
 
-use crate::{central_state, constants::SYSTEM_ID, state::{NameStateRecordHeader, get_name_state_key}, utils::{TIME, check_state_time, get_hashed_name, promotion_inspect::settle_qualifications_verify}};
+use crate::{central_state, state::{NameStateRecordHeader, get_name_state_key, vault::VaultRecord}, utils::{can_settle, get_hashed_name, promotion_inspect::settle_qualifications_verify}};
 
 pub mod initialize;
 pub mod repeat;
@@ -117,16 +117,16 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
     pub fn check(&self) -> Result<(), ProgramError> {
 
-        check_account_key(self.naming_service_program, &web3_domain_name_service::ID).unwrap();
+        check_account_key(self.naming_service_program, &web3_domain_name_service::ID)?;
         msg!("nameservice id ok");
-        check_account_key(self.system_program, &SYSTEM_ID).unwrap();
+        check_account_key(self.system_program, &solana_program::system_program::ID)?;
         msg!("system_program id ok");
         check_account_key(self.rent_sysvar, &sysvar::rent::ID)?;
 
         check_account_owner(self.root_domain, &web3_domain_name_service::ID)?;
         check_account_owner(self.domain_state_account, &crate::ID)?;
 
-        check_signer(self.fee_payer).unwrap();
+        check_signer(self.fee_payer)?;
         msg!("fee_payer signature ok");
 
         Ok(())
@@ -135,7 +135,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
 // all pepole on the referrer chain can confirm the domain
 
-pub fn process_settle_auction<'a, 'b: 'a>(
+pub fn process_finalize_name<'a, 'b: 'a>(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
     params: Params,
@@ -159,7 +159,7 @@ pub fn process_settle_auction<'a, 'b: 'a>(
             NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
         
         // after auction time 
-        if check_state_time(name_state_data.update_time)? != TIME::PENDING {
+        if !can_settle(name_state_data.update_time)?{
             msg!("not settle time");
             return Err(ProgramError::InvalidArgument);
         }
@@ -194,7 +194,7 @@ pub fn process_settle_auction<'a, 'b: 'a>(
             // buy from others -- means deposit ratio is 5%
             Ok(record_data) =>{
                 self::repeat::repeat_settle(
-                    accounts, 
+                    &accounts, 
                     params, 
                     record_data, 
                     &name_state_data, 
@@ -202,7 +202,7 @@ pub fn process_settle_auction<'a, 'b: 'a>(
             }
             Err(_) => {
                 self::initialize::initialize_settle(
-                    accounts, 
+                    &accounts, 
                     params, 
                     &name_state_data, 
                     hased_name, 
@@ -210,14 +210,22 @@ pub fn process_settle_auction<'a, 'b: 'a>(
                 )?;
             }
         }
-    }
-    
 
-    let mut name_state_data =
-        NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
-    name_state_data.highest_price += 1;
-    name_state_data.settled = true;
-    name_state_data.pack_into_slice(&mut name_state_account.try_borrow_mut_data()?);
+        // destory the name state account
+        let lamports = **accounts.domain_state_account.lamports.borrow();
+        **accounts.vault.try_borrow_mut_lamports()? += lamports;
+        **accounts.domain_state_account.try_borrow_mut_lamports()? -= lamports;
+
+        let mut data = accounts.domain_state_account.try_borrow_mut_data()?;
+            for byte in data.iter_mut() {
+                *byte = 0;
+        }
+        accounts.domain_state_account.assign(&solana_program::system_program::ID);
+
+        let mut vault_record = 
+            VaultRecord::unpack_from_slice(&accounts.vault.data.borrow_mut())?;
+        vault_record.update_top_domain(name_account_key, name_state_data.highest_price);
+    }
 
     Ok(())
 }

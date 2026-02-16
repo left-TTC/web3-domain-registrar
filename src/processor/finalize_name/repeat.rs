@@ -10,7 +10,7 @@ use crate::{central_state, constants::return_vault_key, cpi::Cpi, state::{NameSt
 
 // Here we need to consider calls to the same address using different names.
 pub fn repeat_settle(
-    accounts: super::Accounts<'_, AccountInfo<'_>>,
+    accounts: &super::Accounts<'_, AccountInfo<'_>>,
     params: super::Params,
     name_account_data: NameRecordHeader,
     name_state_data: &NameStateRecordHeader,

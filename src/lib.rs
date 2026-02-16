@@ -15,26 +15,17 @@ pub use error::Error;
 declare_id_with_central_state!("jCebN34bUfdeUYJT13J1yG16XWQpt5PDx6Mse9GUqhR");
 
 #[cfg(feature = "devnet")]
-declare_id_with_central_state!("2xf73UX5CKCMwUznykZthaxnx2yq1QYjuNojatTeGfT7");
+declare_id_with_central_state!("2DWpnVSCANu1vBdMKT9Qpis9snzanPjUzL7WH9oZeB9X");
 
 
 #[cfg(feature = "devnet")]
 pub mod constants {
         
     use solana_program::{pubkey, pubkey::Pubkey};
-    pub const SYSTEM_ID: Pubkey = pubkey!("11111111111111111111111111111111");
 
     pub const ADMIN_ANDY: Pubkey = pubkey!("DWNSuxCniY8m11DazRoN3VqvDZK8Sps2wgoQHWx3t4Sx");
     pub const ADMIN_FANMOCHENG: Pubkey = pubkey!("2NFji3XWVs2tb8btmGgkunjA9AFTr5x3DaTbsrZ7abGh");
 
-    // pub fn return_vault_key() -> (Pubkey, Vec<u8>){
-    //     get_seeds_and_key(
-    //         &crate::ID, 
-    //         get_hashed_name("vault"), 
-    //         Some(&central_state::KEY), 
-    //         Some(&central_state::KEY)
-    //     )
-    // }
 
     pub fn return_vault_key() -> (Pubkey, u8) {
         static VAULT_SEED: &[u8] = b"vault";

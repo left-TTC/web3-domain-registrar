@@ -6,10 +6,10 @@ use solana_program::{
 use web3_domain_name_service::{state::NameRecordHeader};
 use web3_utils::check::check_account_key;
 
-use crate::{central_state, constants::return_vault_key, cpi::Cpi, state::{NameStateRecordHeader}, utils::{transfer_by_chain}};
+use crate::{central_state, constants::return_vault_key, cpi::Cpi, state::NameStateRecordHeader, utils::transfer_by_chain::{transfer_by_referrer_chain}};
 
 pub fn initialize_settle(
-    accounts: super::Accounts<'_, AccountInfo<'_>>,
+    accounts: &super::Accounts<'_, AccountInfo<'_>>,
     params: super::Params,
     name_state_data: &NameStateRecordHeader,
     hased_name: Vec<u8>,
@@ -20,7 +20,7 @@ pub fn initialize_settle(
     let (vault_key, _) = return_vault_key();
     check_account_key(accounts.vault, &vault_key)?;
 
-    transfer_by_chain::transfer_by_referrer_chain(
+    transfer_by_referrer_chain(
         &accounts, name_state_data.highest_price,
     )?;
     msg!("transfer and promote ok");

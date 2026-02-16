@@ -21,13 +21,14 @@ use solana_program::{
 
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{constants::{SYSTEM_ID, return_vault_key}, state::{NameStateRecordHeader, ReferrerRecordHeader, get_name_state_key, get_referrer_record_key}, utils::{TIME, check_state_time, get_now_time, if_referrer_valid, share}};
-
+use crate::{constants::{return_vault_key}, state::{NameStateRecordHeader, ReferrerRecordHeader, get_name_state_key, get_referrer_record_key}, utils::{get_hashed_name, get_now_time, if_referrer_valid, share}};
+use web3_domain_name_service::utils::get_seeds_and_key;
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
 pub struct Params {
     pub name: String,
+    pub root: String,
     pub my_price_sol: u64,
     pub referrer_key: Pubkey,
 }
@@ -58,8 +59,6 @@ pub struct Accounts<'a, T> {
     pub referrer_record_account: &'a T,
     /// referrer's referrer record account
     pub superior_referrer_record: Option<&'a T>,
-    /// if need create the referrer record, we need the rent sysvar
-    pub rent: Option<&'a T>,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -76,13 +75,12 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             vault: next_account_info(accounts_iter)?,
             referrer_record_account: next_account_info(accounts_iter)?,
             superior_referrer_record: next_account_info(accounts_iter).ok(),
-            rent: next_account_info(accounts_iter).ok(),
         })
     }
 
     pub fn check(&self) -> Result<(), ProgramError> {
 
-        check_account_key(self.system_program, &SYSTEM_ID).unwrap();
+        check_account_key(self.system_program, &solana_program::system_program::ID).unwrap();
         msg!("system_program id ok");
 
         check_account_owner(self.root_domain, &web3_domain_name_service::ID)?;
@@ -103,25 +101,38 @@ pub fn process_increase_price<'a, 'b: 'a>(
     params: Params,
 ) -> ProgramResult {
 
+    // Check if domain is "dns.kilo"
+    if params.name == "dns" && params.root == "kilo" {
+        msg!("dns.kilo can't be saled");
+        return Err(ProgramError::InvalidArgument);
+    }
+
     let accounts = Accounts::parse(accounts)?;
     accounts.check()?;
 
+    let hashed_root = get_hashed_name(&params.root);
+    let (root_domain_key, _) = get_seeds_and_key(
+        &web3_domain_name_service::ID,
+        hashed_root,
+        None,
+        None
+    );
+    check_account_key(accounts.root_domain, &root_domain_key)?;
+    msg!("root domain key verified");
+
     let name_state_account = accounts.domain_state_account;
-    let (name_state_key, _) = 
-        get_name_state_key(&params.name, accounts.root_domain.key);
-    
+    let (name_state_key, _) = get_name_state_key(&params.name, accounts.root_domain.key);
     check_account_key(name_state_account, &name_state_key)?;
     msg!("name state key right");
 
     let name_state_data = 
         NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
-    
-    if check_state_time(name_state_data.update_time)? != TIME::AUCTION {
-        msg!("This auction has settled");
+    if params.my_price_sol < share(name_state_data.highest_price, 105)? {
+        msg!("At least 5% markup");
         return Err(ProgramError::InvalidArgument);
     }
-    if params.my_price_sol < share(name_state_data.highest_price, 101)? {
-        msg!("At least 1% markup");
+    if &name_state_data.highest_bidder != accounts.last_bidder.key {
+        msg!("give fault last bidder");
         return Err(ProgramError::InvalidArgument);
     }
 
@@ -139,70 +150,65 @@ pub fn process_increase_price<'a, 'b: 'a>(
     if accounts.referrer_record_account.data_is_empty() {
         msg!("new user, should init the referrer account");
 
-        if let Some(rent_sysvar) = accounts.rent {
-            let rent = Rent::from_account_info(rent_sysvar)?;
-            let referrer_record_lamports = rent.minimum_balance(ReferrerRecordHeader::LEN);
+        let rent = Rent::get()?;
+        let referrer_record_lamports = rent.minimum_balance(ReferrerRecordHeader::LEN);
 
-            if params.referrer_key != vault_key {
-                msg!("payer use other's invitation");
-                if let Some(superior_referrer) = accounts.superior_referrer_record {
-                    let (superior_referrer_key, _) = get_referrer_record_key(&params.referrer_key);
-                    check_account_key(superior_referrer, &superior_referrer_key)?;
+        if params.referrer_key != vault_key {
+            msg!("payer use other's invitation");
+            if let Some(superior_referrer) = accounts.superior_referrer_record {
+                let (superior_referrer_key, _) = get_referrer_record_key(&params.referrer_key);
+                check_account_key(superior_referrer, &superior_referrer_key)?;
 
-                    msg!("refferr's referrer record account ok");
-                    
-                    let referrer_referrer_state =  
-                    ReferrerRecordHeader::unpack_from_slice(&superior_referrer.data.borrow())?;
+                msg!("refferr's referrer record account ok");
+                
+                let referrer_referrer_state =  
+                ReferrerRecordHeader::unpack_from_slice(&superior_referrer.data.borrow())?;
 
-                    if !if_referrer_valid(referrer_referrer_state)?{
-                        return Err(ProgramError::InvalidArgument);
-                    }
-                } else {
-                    msg!("you should provide your referrer's referrer record while your referrer isn't vault"); 
+                if !if_referrer_valid(referrer_referrer_state)?{
                     return Err(ProgramError::InvalidArgument);
                 }
+            } else {
+                msg!("you should provide your referrer's referrer record while your referrer isn't vault"); 
+                return Err(ProgramError::InvalidArgument);
             }
-
-            invoke(
-            &system_instruction::transfer(
-                accounts.fee_payer.key, &referrer_record, referrer_record_lamports), 
-                &[
-                    accounts.fee_payer.clone(),
-                    accounts.referrer_record_account.clone(),
-                    accounts.system_program.clone(),
-                ],
-            )?;
-
-            invoke_signed(
-                &system_instruction::allocate(
-                    &referrer_record, 
-                    ReferrerRecordHeader::LEN as u64
-                ), 
-                &[accounts.referrer_record_account.clone(), accounts.system_program.clone()], 
-                &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
-            )?;
-
-            invoke_signed(
-                &system_instruction::assign(&referrer_record, &crate::ID),
-                &[accounts.referrer_record_account.clone(), accounts.system_program.clone()],
-                &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
-            )?;
-
-            msg!("create payer's referrer record account");
-
-            let record = ReferrerRecordHeader::new(
-                params.referrer_key,
-                get_now_time()?
-            );
-
-            let mut data = accounts.referrer_record_account.try_borrow_mut_data()?;
-            record.pack_into_slice(&mut data);
-
-            msg!("write in referrer record account");
-        }else {
-            msg!("should give a rent");
-            return Err(ProgramError::InvalidArgument);
         }
+
+        invoke(
+        &system_instruction::transfer(
+            accounts.fee_payer.key, &referrer_record, referrer_record_lamports), 
+            &[
+                accounts.fee_payer.clone(),
+                accounts.referrer_record_account.clone(),
+                accounts.system_program.clone(),
+            ],
+        )?;
+
+        invoke_signed(
+            &system_instruction::allocate(
+                &referrer_record, 
+                ReferrerRecordHeader::LEN as u64
+            ), 
+            &[accounts.referrer_record_account.clone(), accounts.system_program.clone()], 
+            &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+        )?;
+
+        invoke_signed(
+            &system_instruction::assign(&referrer_record, &crate::ID),
+            &[accounts.referrer_record_account.clone(), accounts.system_program.clone()],
+            &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+        )?;
+
+        msg!("create payer's referrer record account");
+
+        let record = ReferrerRecordHeader::new(
+            params.referrer_key,
+            get_now_time()?
+        );
+
+        let mut data = accounts.referrer_record_account.try_borrow_mut_data()?;
+        record.pack_into_slice(&mut data);
+
+        msg!("write in referrer record account");
 
     }else {
         let buyer_referrer_record =
@@ -215,19 +221,9 @@ pub fn process_increase_price<'a, 'b: 'a>(
         msg!("referrer ok");
     }
 
-
-    // transfer back the deposit
-    invoke(&system_instruction::transfer(
-        accounts.fee_payer.key, accounts.last_bidder.key, name_state_data.highest_price), 
-        &[
-            accounts.fee_payer.clone(),
-            accounts.last_bidder.clone(),
-            accounts.system_program.clone(),
-        ]
-    )?;
     //transfer the increased part to vault
     invoke(&system_instruction::transfer(
-        accounts.fee_payer.key, &vault_key, params.my_price_sol - name_state_data.highest_price), 
+        accounts.fee_payer.key, &vault_key, params.my_price_sol), 
         &[
             accounts.fee_payer.clone(),
             accounts.vault.clone(),
@@ -235,10 +231,16 @@ pub fn process_increase_price<'a, 'b: 'a>(
         ]
     )?;
 
+    // transfer back the deposit
+    **accounts.vault.try_borrow_mut_lamports()? -= name_state_data.highest_price;
+    **accounts.last_bidder.try_borrow_mut_lamports()? += name_state_data.highest_price;
+
     let new_record = NameStateRecordHeader::new(
         accounts.fee_payer.key, 
         get_now_time()?, 
         params.my_price_sol,
+        &params.root,
+        &params.name,
     );
     NameStateRecordHeader::pack(new_record, &mut name_state_account.data.borrow_mut())?;
     msg!("update the name record ok");

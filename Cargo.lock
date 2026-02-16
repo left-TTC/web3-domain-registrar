@@ -2270,9 +2270,9 @@ dependencies = [
 
 [[package]]
 name = "web3-domain-name-service"
-version = "0.1.10"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a013d62127d11e87d531348dfefdbca056c81f6386784a74d169c0731711a93e"
+checksum = "01743a3fc89d89905d053c84fd4c999e224c35dfe3c1bbec4ac96de3e43e56f2"
 dependencies = [
  "borsh 1.5.7",
  "num-derive 0.4.2",
@@ -2284,7 +2284,7 @@ dependencies = [
 
 [[package]]
 name = "web3-domain-registrar"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "borsh 0.10.4",
  "num-derive 0.3.3",

@@ -10,6 +10,12 @@ solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.j
 ```bash
 cargo build-sbf
 ```
+
+## Check
+```bash
+solana-keygen pubkey target/deploy/web3_domain_registrar-keypair.json
+```
+
 ## Account Structure
 > About get_seeds_and_keys
 

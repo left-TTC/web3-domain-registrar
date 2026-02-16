@@ -1,6 +1,3 @@
-
-
-
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 use web3_utils::{
     check::{check_account_key, check_signer},
@@ -24,11 +21,8 @@ use solana_program::{
 };
 use solana_system_interface::instruction as system_instruction;
 use crate::{
-    central_state, constants::{ ADMIN_ANDY, ADMIN_FANMOCHENG, SYSTEM_ID, return_vault_key}, cpi::Cpi, utils::{get_hashed_name}
+    central_state, constants::{ ADMIN_ANDY, ADMIN_FANMOCHENG, return_vault_key}, cpi::Cpi, utils::{get_hashed_name}, state::vault::VaultRecord
 };
-
-
-
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize)]
 pub struct Params {
@@ -74,7 +68,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         };
 
         // Check keys
-        check_account_key(accounts.system_program, &SYSTEM_ID)?;
+        check_account_key(accounts.system_program, &solana_program::system_program::ID)?;
         
         let admin_key = accounts.administrator.key;
         if admin_key != &ADMIN_ANDY && admin_key != &ADMIN_FANMOCHENG {
@@ -99,8 +93,8 @@ pub fn process_start_project(
 ) -> ProgramResult {
     let accounts = Accounts::parse(accounts)?;
 
-    if params.start_domain != "fmc" {
-        msg!("start should be test");
+    if params.start_domain != "kilo" {
+        msg!("start domain should be kilo");
         return Err(ProgramError::InvalidArgument);
     }
 
@@ -137,7 +131,7 @@ pub fn process_start_project(
             accounts.administrator.key, 
             &vault_key, 
             0, 
-            0, 
+            VaultRecord::LEN as u64, 
             &crate::ID
         ), 
         &[
@@ -147,6 +141,10 @@ pub fn process_start_project(
         ], 
         &[vault_seeds]
     )?;
+
+    // Initialize vault record
+    let vault_record = VaultRecord::new();
+    vault_record.pack_into_slice(&mut vault.data.borrow_mut());
 
     let rent = Rent::from_account_info(accounts.rent_sysvar)?;
 
@@ -168,7 +166,6 @@ pub fn process_start_project(
         params.start_domain, 
         hashed_reverse, 
         accounts.central_state, 
-        
         accounts.rent_sysvar, 
         central_state_signer_seeds, 
         None, 

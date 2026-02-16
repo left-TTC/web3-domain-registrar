@@ -10,9 +10,9 @@ use solana_program::{
 
 pub mod start_name; 
 pub mod increase_price;
-pub mod create_root;
-pub mod initiate_root;
-pub mod settle_auction;
+pub mod register_root;
+pub mod initialize_root;
+pub mod finalize_name;
 pub mod start_project;
 pub mod extract_admin;
 pub mod extract;
@@ -35,49 +35,49 @@ impl Processor {
         msg!("Instruction unpacked: means instruction data is ok");
 
         match instruction {
-            ProgramInstruction::InitiateRoot => {
+            ProgramInstruction::InitializeRoot => {
                 msg!("Instruction: initiate root domain");
-                let params = initiate_root::Params::try_from_slice(instruction_data)
+                let params = initialize_root::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidInstructionData)?;
-                initiate_root::process_initiate_root(program_id, accounts, params)?;
+                initialize_root::process_initialize_root(program_id, accounts, params)?;
             }
-            ProgramInstruction::CreateRoot => {
+            ProgramInstruction::RegisterRoot => {
                 msg!("Instruction: create root domain");
-                let params = create_root::Params::try_from_slice(instruction_data)
+                let params = register_root::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidArgument)?;
-                create_root::process_create_root(program_id, accounts, params)?;
+                register_root::process_register_root(program_id, accounts, params)?;
             }
-            ProgramInstruction::StartName => {
+            ProgramInstruction::BeginNameRegistration => {
                 msg!("Instruction: create name domain");
                 let params = start_name::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidArgument)?;
                 start_name::process_start_name(program_id, accounts, params)?;
             }
-            ProgramInstruction::IncreasePrice => {
+            ProgramInstruction::IncreaseBid => {
                 msg!("Instruction: Participate in name auction");
                 let params = increase_price::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidArgument)?;
                 increase_price::process_increase_price(program_id, accounts, params)?;
             }
-            ProgramInstruction::SettleName => {
+            ProgramInstruction::FinalizeName => {
                 msg!("Instruction: settle and create an domain name");
-                let params = settle_auction::Params::try_from_slice(instruction_data)
+                let params = finalize_name::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidArgument)?;
-                settle_auction::process_settle_auction(program_id, accounts, params)?;
+                finalize_name::process_finalize_name(program_id, accounts, params)?;
             }
-            ProgramInstruction::Extract => {
+            ProgramInstruction::Withdraw => {
                 msg!("Instruction: user extract");
                 let params = extract::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidArgument)?;
                 extract::process_extract(program_id, accounts, params)?;
             }
-            ProgramInstruction::StartProject => {
+            ProgramInstruction::InitializeProject => {
                 msg!("Instruction: start Project");
                 let params = start_project::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidArgument)?;
                 start_project::process_start_project(program_id, accounts, params)?;
             }
-            ProgramInstruction::ExtractAdmin => {
+            ProgramInstruction::WithdrawAdmin => {
                 msg!("Instruction: admin extract");
                 let params = extract_admin::Params::try_from_slice(instruction_data)
                     .map_err(|_| ProgramError::InvalidArgument)?;

@@ -13,7 +13,7 @@ use solana_program::{
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 
 use crate::{
-    central_state, constants::{SYSTEM_ID, return_vault_key}, cpi::Cpi, state::{ReverseLookup, RootStateRecordHeader, write_data}, utils::{ CREATE_ROOT_TARGET, get_hashed_name}
+    central_state, constants::return_vault_key, cpi::Cpi, state::{ RootStateRecordHeader, reverse_lookup::ReverseLookup, write_data}, utils::{ CREATE_ROOT_TARGET, get_hashed_name, math}
 };
 
 use {
@@ -37,7 +37,7 @@ use solana_system_interface::instruction as instruction;
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 pub struct Params {
     pub root_name: String,
-    pub add_sol: u64,
+    pub add_lam: u64,
 }
 
 #[derive(InstructionsAccount)]
@@ -82,7 +82,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         };
 
         check_account_key(accounts.name_service, &web3_domain_name_service::ID)?;
-        check_account_key(accounts.system_program, &SYSTEM_ID)?;
+        check_account_key(accounts.system_program, &solana_program::system_program::ID)?;
         check_account_key(accounts.central_state, &central_state::KEY)?;
 
         // Check owners
@@ -97,14 +97,13 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 }
 
 // only add the rooy state
-pub fn process_create_root(
+pub fn process_register_root(
     _program_id: &Pubkey, 
     accounts: &[AccountInfo], 
     params: Params
 ) -> ProgramResult {
 
-    msg!("root name: {:?}, add: {:?} lamports", params.root_name, params.add_sol);
-
+    msg!("root name: {:?}, add: {:?} lamports", params.root_name, params.add_lam);
     let accounts = Accounts::parse(accounts)?;
     msg!("parse ok");
 
@@ -121,13 +120,10 @@ pub fn process_create_root(
         None, 
         None
     );
-    if root_state_key != *root_state_account.key {
-        msg!("The given root state account is incorrect.");
-        return Err(ProgramError::InvalidArgument);
-    }
+    check_account_key(accounts.root_state_account, &root_state_key)?;
     msg!("rootState ok");
 
-    let mut added_amount = params.add_sol;
+    let mut added_amount = params.add_lam;
     {
         let root_state_account_data = root_state_account.data.borrow();
         let root_record_header = 
@@ -138,8 +134,7 @@ pub fn process_create_root(
             return Err(ProgramError::InvalidArgument);
         }
 
-        added_amount += root_record_header.amount;
-        
+        added_amount = math::add(root_record_header.amount, added_amount)?;
         msg!("used to be: {:?} and now {:?} lamports, add amount ok", root_record_header.amount, added_amount);
     }
 
@@ -147,10 +142,11 @@ pub fn process_create_root(
     write_data(accounts.root_state_account, &bytes, 32);
     msg!("write amount ok");
 
+    // the lamports that shoudld be return to feepayer
     let mut difference: u64 = 0;
 
-    if added_amount > CREATE_ROOT_TARGET {
-        difference = added_amount - CREATE_ROOT_TARGET;
+    if added_amount >= CREATE_ROOT_TARGET {
+        difference = math::sub(added_amount, CREATE_ROOT_TARGET)?;
 
         let root_name_account = accounts.root_name_account;
         let (root_name_key, _) = get_seeds_and_key(
@@ -206,7 +202,6 @@ pub fn process_create_root(
         }
 
         let lamports = rent.minimum_balance(ReverseLookup { name: params.root_name }.try_to_vec().unwrap().len() + NameRecordHeader::LEN) + root_name_lamports;
-
         **accounts.vault.try_borrow_mut_lamports()? -= lamports;
         **accounts.fee_payer.try_borrow_mut_lamports()? += lamports;
     }
@@ -215,7 +210,7 @@ pub fn process_create_root(
     &instruction::transfer(
             accounts.fee_payer.key,
             accounts.vault.key,
-            params.add_sol - difference
+            math::sub(params.add_lam, difference)?,
         ), 
         &[
             accounts.fee_payer.clone(),

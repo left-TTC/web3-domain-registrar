@@ -11,7 +11,7 @@ use crate::{state::{ReferrerRecordHeader, get_referrer_record_key}, utils::{prom
 // 11.10 changed: cancle all directly transfer SOL
 
 pub fn transfer_by_referrer_chain(
-    accounts: &crate::processor::settle_auction::Accounts<'_, AccountInfo<'_>>,
+    accounts: &crate::processor::finalize_name::Accounts<'_, AccountInfo<'_>>,
     referrer_lamports: u64,
 ) -> ProgramResult {
 

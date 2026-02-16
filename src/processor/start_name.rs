@@ -8,14 +8,14 @@ use web3_utils::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo}, clock::Clock, entrypoint::ProgramResult, msg, program::{invoke, invoke_signed}, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, rent::Rent, sysvar::{self, Sysvar}
+    account_info::{next_account_info, AccountInfo}, clock::Clock, entrypoint::ProgramResult, msg, program::{invoke, invoke_signed}, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, rent::Rent, sysvar::Sysvar
 };
-use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
+use web3_domain_name_service::{utils::get_seeds_and_key};
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::{SYSTEM_ID, return_vault_key}, 
-    state::{NameStateRecordHeader, ReferrerRecordHeader, ReverseLookup, get_referrer_record_key}, 
-    utils::{TIME, check_state_time, get_hashed_name, get_now_time, if_referrer_valid}
+use crate::{central_state, constants::{return_vault_key}, 
+    state::{NameStateRecordHeader, ReferrerRecordHeader, get_referrer_record_key}, 
+    utils::{get_hashed_name, get_now_time, if_referrer_valid, math}
 };
 
 
@@ -29,34 +29,38 @@ pub struct Params {
 }
 
 #[derive(InstructionsAccount)]
-/// The required accounts for the `create` instruction
 pub struct Accounts<'a, T> {
     /// The naming service program ID
     pub naming_service_program: &'a T,
+
     /// The root domain account       
     pub root_domain: &'a T,
+
     /// The name account
     pub domain_name_account: &'a T,
+
     /// The domain auction state account
     #[cons(writable)]
     pub domain_state_account: &'a T,
-    /// The domain auction state reverse account
-    #[cons(writable)]
-    pub domain_state_reverse_account: &'a T,
+
     /// The system program account
     pub system_program: &'a T,
+
     /// The central state account
     pub central_state: &'a T,
+
     /// The buyer account     
     #[cons(writable, signer)]
+
     pub fee_payer: &'a T,
-    /// The rent sysvar account
-    pub rent_sysvar: &'a T,
+
     #[cons(writable)]
     pub referrer_record_account: &'a T,
+
     /// vault
     #[cons(writable)]
     pub vault: &'a T,
+
     /// referrer's referrer record account
     pub superior_referrer_record: Option<&'a T>,
 }
@@ -71,11 +75,9 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             root_domain: next_account_info(accounts_iter)?,
             domain_name_account: next_account_info(accounts_iter)?,
             domain_state_account: next_account_info(accounts_iter)?,
-            domain_state_reverse_account: next_account_info(accounts_iter)?,
             system_program: next_account_info(accounts_iter)?,
             central_state: next_account_info(accounts_iter)?,
             fee_payer: next_account_info(accounts_iter)?,
-            rent_sysvar: next_account_info(accounts_iter)?,
             referrer_record_account: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
             superior_referrer_record: next_account_info(accounts_iter).ok(),
@@ -84,14 +86,12 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
     pub fn check(&self) -> Result<(), ProgramError> {
 
-        check_account_key(self.naming_service_program, &web3_domain_name_service::ID).unwrap();
+        check_account_key(self.naming_service_program, &web3_domain_name_service::ID)?;
         msg!("nameservice id ok");
-        check_account_key(self.system_program, &SYSTEM_ID).unwrap();
+        check_account_key(self.system_program, &solana_program::system_program::ID)?;
         msg!("system_program id ok");
-        check_account_key(self.central_state, &central_state::KEY).unwrap();
+        check_account_key(self.central_state, &central_state::KEY)?;
         msg!("central_state id ok");
-        check_account_key(self.rent_sysvar, &sysvar::rent::ID).unwrap();
-        msg!("rent_sysvar id ok");
 
         // when check account owner -> we have two direction:
         // frist: register a initial domain name => 
@@ -105,7 +105,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         msg!("root_domain owner ok");
 
         // Check signer
-        check_signer(self.fee_payer).unwrap();
+        check_signer(self.fee_payer)?;
         msg!("fee_payer signature ok");
 
         Ok(())
@@ -121,7 +121,6 @@ pub fn process_start_name<'a, 'b: 'a>(
 ) -> ProgramResult {
 
     let accounts = Accounts::parse(accounts)?;
-    
     accounts.check()?;
     
     if params.name != params.name.trim().to_lowercase() {
@@ -132,13 +131,17 @@ pub fn process_start_name<'a, 'b: 'a>(
         msg!("domain contains invalid puncation");
         return Err(ProgramError::InvalidArgument);
     }
-    msg!("name: {}", params.name);
+    msg!("name: {}.{}", params.name, params.root_name);
 
-    let rent = Rent::from_account_info(accounts.rent_sysvar)?;
+    if params.price_sol <= 10_000_000{
+        msg!("should be large than 100000000");
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    let rent = Rent::get()?;
 
     let vault = accounts.vault;
     let (vault_key, _) = return_vault_key();
-
     check_account_key(vault, &vault_key)?;
     msg!("vault ok");
 
@@ -147,11 +150,9 @@ pub fn process_start_name<'a, 'b: 'a>(
     let (referrer_record, referrer_seeds) = 
         get_referrer_record_key(&accounts.fee_payer.key);
     check_account_key(referrer_record_account, &referrer_record)?;
-
     msg!("payer's referrer record account ok");
 
     if referrer_record_account.data_len() == 0 {
-        
         msg!("payer's referrer record account need to be intialized");
         let referrer_record_lamports = rent.minimum_balance(ReferrerRecordHeader::LEN);
 
@@ -217,7 +218,7 @@ pub fn process_start_name<'a, 'b: 'a>(
         let referrer_data = 
             ReferrerRecordHeader::unpack_from_slice(&referrer_record_account.data.borrow())?;
         if referrer_data.referrer_account != params.referrer_key {
-            msg!("regferrer is not unique");
+            msg!("referrer is not unique");
             return Err(ProgramError::InvalidArgument);
         }
     }
@@ -250,145 +251,60 @@ pub fn process_start_name<'a, 'b: 'a>(
     check_account_key(name_state_account, &name_state_key)?;
     msg!("name state ok");
 
-    let name_state_reverse = accounts.domain_state_reverse_account;
-    let (name_state_reverse_key, name_state_reverse_seed) = get_seeds_and_key(
-        &crate::ID, 
-        get_hashed_name(&name_state_key.to_string()), 
-        Some(&central_state::KEY), 
-        None
-    );
-    check_account_key(name_state_reverse, &name_state_reverse_key)?;
-    msg!("name state reverse ok");
+    if !name_state_account.data_is_empty() {
+        msg!("This domain name must be being auctioned.");
+        return Err(ProgramError::InvalidArgument);
+    }
 
-    // initiate or start twice auction;
-    if name_state_account.data_is_empty() {
-        
-        msg!("this domain is the frist time auction");
-        if params.price_sol != 10_000_000 {
-            msg!("error start price");
-            return Err(ProgramError::InvalidArgument);
-        }
-
-        let name_state_lamports = rent.minimum_balance(NameStateRecordHeader::LEN);
-
-        invoke(
-        &system_instruction::transfer(
-            accounts.fee_payer.key, &name_state_key, name_state_lamports), 
-            &[
-                accounts.fee_payer.clone(),
-                accounts.domain_state_account.clone(),
-                accounts.system_program.clone(),
-            ],
-        )?;
-        invoke_signed(
-            &system_instruction::allocate(
-                &name_state_key, 
-                NameStateRecordHeader::LEN as u64
-            ), 
-            &[name_state_account.clone(), accounts.system_program.clone()], 
-            &[&name_state_seeds.chunks(32).collect::<Vec<&[u8]>>()],
-        )?;
-        invoke_signed(
-            &system_instruction::assign(&name_state_key, &crate::ID),
-            &[name_state_account.clone(), accounts.system_program.clone()],
-            &[&name_state_seeds.chunks(32).collect::<Vec<&[u8]>>()],
-        )?;
-
-        let first_name_state_record = NameStateRecordHeader::new(
-            accounts.fee_payer.key, 
-            Clock::get()?.unix_timestamp, 
-            params.price_sol
-        );
-        first_name_state_record.pack_into_slice(& mut name_state_account.data.borrow_mut());
-        msg!("write name state ok");
-
-        let name_bytes = ReverseLookup { name: format!("{}.{}", params.name, params.root_name) }.try_to_vec().unwrap();
-        msg!("reverse name {}", format!("{}.{}", params.name, params.root_name));
-
-        // create reverse key and write domain data
-        invoke(
-        &system_instruction::transfer(
-            accounts.fee_payer.key, &name_state_reverse_key, rent.minimum_balance(name_bytes.len() as usize)), 
-            &[
-                accounts.fee_payer.clone(),
-                accounts.domain_state_reverse_account.clone(),
-                accounts.system_program.clone(),
-            ],
-        )?;
-        invoke_signed(
-            &system_instruction::allocate(
-                &name_state_reverse_key, 
-                name_bytes.len() as u64
-            ), 
-            &[accounts.domain_state_reverse_account.clone(), accounts.system_program.clone()], 
-            &[&name_state_reverse_seed.chunks(32).collect::<Vec<&[u8]>>()],
-        )?;
-        invoke_signed(
-            &system_instruction::assign(&name_state_reverse_key, &crate::ID),
-            &[accounts.domain_state_reverse_account.clone(), accounts.system_program.clone()],
-            &[&name_state_reverse_seed.chunks(32).collect::<Vec<&[u8]>>()],
-        )?;
-
-        {
-            let mut data = accounts.domain_state_reverse_account.try_borrow_mut_data()?;
-            data[..name_bytes.len()].copy_from_slice(&name_bytes);
-            msg!("write name state reverse ok");
-        }
-
-        msg!("name state: {:?}", rent.minimum_balance(name_bytes.len() as usize) + name_state_lamports);
-    } else {
-        // Second or subsequent auctions
-        msg!("Second or subsequent auctions");
-        
-        let name_state_data = 
-            NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
-        if check_state_time(name_state_data.update_time)? != TIME::PENDING {
-            msg!("auctioning, can't initiate auction");
-            return Err(ProgramError::InvalidArgument);
-        }
-
-        // Initiate if there is no auction status
-        let domain_account_data = 
-            NameRecordHeader::unpack_from_slice(&accounts.domain_name_account.data.borrow())
-            .map_err(|e| {
-                msg!("this name account has been auctioned, but not created");
-                msg!("waiting for confirm");
-                e
-            })?;
-
-        if domain_account_data.owner != name_state_data.highest_bidder {
-            msg!("this domain hasn't been confirm");
-            return Err(ProgramError::InvalidArgument);
-        }
-
-        if params.price_sol != domain_account_data.custom_price {
-            msg!("error value");
-            return Err(ProgramError::InvalidArgument);
-        }
-        if accounts.fee_payer.key == &domain_account_data.owner {
-            msg!("you can't start your own domain");
-            return Err(ProgramError::InvalidArgument);
-        }
-        
-        let new_record = NameStateRecordHeader::new(
-            accounts.fee_payer.key, 
-            get_now_time()?, 
-            params.price_sol
-        );
-        NameStateRecordHeader::pack(new_record, &mut name_state_account.data.borrow_mut())?;
-        msg!("update the name record ok");
+    let name_state_lamports = rent.minimum_balance(NameStateRecordHeader::LEN);
+    if name_state_lamports > params.price_sol {
+        msg!("this can't be happend");
+        return Err(ProgramError::InvalidArgument);
     }
 
     invoke(
+    &system_instruction::transfer(
+        accounts.fee_payer.key, &name_state_key, name_state_lamports), 
+        &[
+            accounts.fee_payer.clone(),
+            accounts.domain_state_account.clone(),
+            accounts.system_program.clone(),
+        ],
+    )?;
+    invoke_signed(
+        &system_instruction::allocate(
+            &name_state_key, 
+            NameStateRecordHeader::LEN as u64
+        ), 
+        &[name_state_account.clone(), accounts.system_program.clone()], 
+        &[&name_state_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+    )?;
+    invoke_signed(
+        &system_instruction::assign(&name_state_key, &crate::ID),
+        &[name_state_account.clone(), accounts.system_program.clone()],
+        &[&name_state_seeds.chunks(32).collect::<Vec<&[u8]>>()],
+    )?;
+
+    let first_name_state_record = NameStateRecordHeader::new(
+        accounts.fee_payer.key, 
+        Clock::get()?.unix_timestamp, 
+        params.price_sol,
+        &params.root_name,
+        &params.name,
+    );
+    first_name_state_record.pack_into_slice(& mut name_state_account.data.borrow_mut());
+    msg!("write name state ok: {}.{}", params.root_name, params.name);
+
+    invoke(
         &system_instruction::transfer(
-            accounts.fee_payer.key, &vault_key, params.price_sol), 
+            accounts.fee_payer.key, &vault_key, math::sub(params.price_sol, name_state_lamports)?), 
             &[
                 accounts.fee_payer.clone(),
                 accounts.vault.clone(),
                 accounts.system_program.clone(),
             ]
     )?;
-    msg!("transfer all to vault: {:?} sol", params.price_sol);
+    msg!("transfer all to vault: {:?} sol", math::sub(params.price_sol, name_state_lamports)?);
 
     Ok(())
 }

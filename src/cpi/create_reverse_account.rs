@@ -1,5 +1,5 @@
 
-use crate::state::ReverseLookup;
+use crate::state::reverse_lookup::{ReverseLookup};
 
 use super::Cpi;
 

@@ -1,4 +1,3 @@
-
 use web3_domain_name_service::utils::get_seeds_and_key;
 use web3_utils::{
     check::{check_account_owner, check_account_key, check_signer},
@@ -18,11 +17,10 @@ use solana_program::{
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
-    sysvar,
 };
 use solana_system_interface::instruction as system_instruction;
 use crate::{
-    constants::{SYSTEM_ID, return_vault_key}, utils::{ADVANCED_STORAGE, get_hashed_name}
+    constants::{return_vault_key}, utils::{ADVANCED_STORAGE, get_hashed_name, is_reserved_root, math}
 };
 
 use crate::state::RootStateRecordHeader;
@@ -32,6 +30,7 @@ use crate::state::RootStateRecordHeader;
 #[derive(BorshDeserialize, BorshSerialize, BorshSize)]
 pub struct Params {
     pub root_name: String,
+    pub extra_add: u64,
 }
 
 #[derive(InstructionsAccount)]
@@ -48,8 +47,6 @@ pub struct Accounts<'a, T> {
     /// The vault account     
     #[cons(writable)]
     pub vault: &'a T,
-    /// The rent sysvar account
-    pub rent_sysvar: &'a T,
 }
 
 impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
@@ -61,16 +58,15 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             root_state_account: next_account_info(accounts_iter)?,
             root_name_account: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
-            rent_sysvar: next_account_info(accounts_iter)?,
         };
 
         // Check keys
-        check_account_key(accounts.system_program, &SYSTEM_ID)?;
-        check_account_key(accounts.rent_sysvar, &sysvar::rent::ID)?;
+        check_account_key(accounts.system_program, &solana_program::system_program::ID)?;
 
         msg!("lamports: {:?}", accounts.root_state_account.lamports());
         msg!("owner: {:?}", accounts.root_state_account.owner);
-        check_account_owner(accounts.root_state_account, &SYSTEM_ID)?;
+        check_account_owner(accounts.root_state_account, &solana_program::system_program::ID)?;
+        check_account_owner(accounts.vault, &crate::ID)?;
 
         // Check signer
         check_signer(accounts.initiator)?;
@@ -79,12 +75,22 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
     }
 }
 
-pub fn process_initiate_root(
+pub fn process_initialize_root(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
     params: Params
 ) -> ProgramResult {
     let accounts = Accounts::parse(accounts)?;
+
+    if params.root_name.len() > 16 {
+        msg!("root name is too long");
+        return Err(ProgramError::InvalidArgument);
+    }
+    if is_reserved_root(&params.root_name) {
+        msg!("root name conflicts with reserved domain names");
+        return Err(ProgramError::InvalidArgument);
+    }
+    msg!("root domain's format is ok");
 
     let root_state_account = accounts.root_state_account;
     let (root_state_key, seeds) = get_seeds_and_key(
@@ -93,10 +99,8 @@ pub fn process_initiate_root(
         None, 
         None
     );
-    if root_state_key != *root_state_account.key {
-        msg!("The given root state account is incorrect.");
-        return Err(ProgramError::InvalidArgument);
-    }
+    check_account_key(accounts.root_state_account, &root_state_key)?;
+    msg!("root state ok");
 
     let (root_name_account, _) = get_seeds_and_key(
         &web3_domain_name_service::ID, 
@@ -105,24 +109,17 @@ pub fn process_initiate_root(
         None,
     );
     check_account_key(accounts.root_name_account, &root_name_account)?;
+    msg!("root name ok");
 
     let (vault, _) = return_vault_key();
     check_account_key(accounts.vault, &vault)?;
     msg!("check vault ok");
 
-    if root_state_account.data.borrow().len() > 0 {
-        msg!("the root state account's length > 0");
-        let _root_record_header = 
-            RootStateRecordHeader::unpack_from_slice(&root_state_account.data.borrow())?;
-    }
-    msg!("root state account ok");
-
-    let mut extra_lamports = ADVANCED_STORAGE;
-
+    let lamports = math::add(ADVANCED_STORAGE, params.extra_add)?;
     // if the root state account doesn't created
-    if root_state_account.data.borrow().len() == 0 {
+    if root_state_account.data_is_empty() {
 
-        let rent = Rent::from_account_info(accounts.rent_sysvar)?;
+        let rent = Rent::get()?;
         let root_state_lamports = rent.minimum_balance(RootStateRecordHeader::LEN);
         
         invoke(
@@ -150,23 +147,24 @@ pub fn process_initiate_root(
             &[&seeds.chunks(32).collect::<Vec<&[u8]>>()],
         )?;
 
-        extra_lamports -= root_state_lamports;
+        invoke(
+        &system_instruction::transfer(
+            accounts.initiator.key, accounts.vault.key, math::sub(lamports, root_state_lamports)?), 
+            &[
+                accounts.initiator.clone(),
+                accounts.vault.clone(),
+                accounts.system_program.clone(),
+            ],
+        )?;
+        msg!("transfer to vault ok");
+
     }else {
         msg!("root state length err"); 
         return Err(ProgramError::AccountAlreadyInitialized);
     }
     msg!("create root state account ok");
 
-    invoke(
-    &system_instruction::transfer(
-        accounts.initiator.key, accounts.vault.key, extra_lamports), 
-        &[
-            accounts.initiator.clone(),
-            accounts.vault.clone(),
-            accounts.system_program.clone(),
-        ],
-    )?;
-    msg!("transfer to vault ok");
+    
 
 
     let init_state: RootStateRecordHeader = RootStateRecordHeader::
