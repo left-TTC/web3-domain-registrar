@@ -29,7 +29,6 @@ solana-keygen pubkey target/deploy/web3_domain_registrar-keypair.json
 |WEB3_REGISTRAR |       Register_Central        |       Root Domain        |   Name State Account |
 |WEB3_REGISTRAR  |       Register_Central        |       Register_Central        |   Vault |
 |WEB3_REGISTRAR  |       WEB3_REGISTRAR        |       WEB3_REGISTRAR        |   referrer Record |
-|WEB3_REGISTRAR  |       WEB3_REGISTRAR        |       None        |   Name State Reverse |
 
 > About account structure
 

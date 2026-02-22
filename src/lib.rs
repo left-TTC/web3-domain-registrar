@@ -15,7 +15,7 @@ pub use error::Error;
 declare_id_with_central_state!("jCebN34bUfdeUYJT13J1yG16XWQpt5PDx6Mse9GUqhR");
 
 #[cfg(feature = "devnet")]
-declare_id_with_central_state!("2DWpnVSCANu1vBdMKT9Qpis9snzanPjUzL7WH9oZeB9X");
+declare_id_with_central_state!("FebjdrGRLHocUXADP5QYPFfEkbYtRHMyobAL6wwkQe2d");
 
 
 #[cfg(feature = "devnet")]

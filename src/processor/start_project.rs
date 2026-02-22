@@ -125,12 +125,13 @@ pub fn process_start_project(
     msg!("check vault ok");
 
     let vault_seeds: &[&[u8]] = &[b"vault", &[bump]];
+    let rent = Rent::from_account_info(accounts.rent_sysvar)?;
 
     invoke_signed(
         &system_instruction::create_account(
             accounts.administrator.key, 
             &vault_key, 
-            0, 
+            rent.minimum_balance(VaultRecord::LEN), 
             VaultRecord::LEN as u64, 
             &crate::ID
         ), 
@@ -145,8 +146,6 @@ pub fn process_start_project(
     // Initialize vault record
     let vault_record = VaultRecord::new();
     vault_record.pack_into_slice(&mut vault.data.borrow_mut());
-
-    let rent = Rent::from_account_info(accounts.rent_sysvar)?;
 
     Cpi::create_root_name_account(
         accounts.name_service, 

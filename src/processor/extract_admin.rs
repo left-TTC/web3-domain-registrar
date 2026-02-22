@@ -9,7 +9,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo}, entrypoint::ProgramResult, msg, program_error::ProgramError, pubkey::Pubkey
 };
 
-use crate::{constants::{ADMIN_ANDY, ADMIN_FANMOCHENG}, utils::share};
+use crate::{constants::{ADMIN_ANDY, ADMIN_FANMOCHENG}, utils::share_with_cap};
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
@@ -70,13 +70,12 @@ pub fn process_extract_admin<'a, 'b: 'a>(
     let accounts = Accounts::parse(accounts)?;
     accounts.check()?;
 
-    let transfer_out_lamports = share(params.extraction, 50)?;
+    let transfer_out_lamports = share_with_cap(params.extraction, 500_000_000)?;
 
     **accounts.vault.try_borrow_mut_lamports()? -= transfer_out_lamports * 2;
 
     **accounts.admin_signer.try_borrow_mut_lamports()? += transfer_out_lamports;
     **accounts.admin_other.try_borrow_mut_lamports()? += transfer_out_lamports;
-
 
     Ok(())
 }

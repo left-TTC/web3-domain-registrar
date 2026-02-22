@@ -8,7 +8,7 @@ use solana_program::program_pack::Pack;
 
 use crate::processor::finalize_name::Accounts;
 use crate::state::{ReferrerRecordHeader};
-use crate::utils::share;
+use crate::utils::share_with_cap;
 
 pub fn settle_qualifications_verify(
     accounts: &Accounts<'_, AccountInfo<'_>>,
@@ -113,17 +113,17 @@ pub fn promotion_inspect(
             msg!("all not vault");
             let a_performance = referrer_profit_add(
                 accounts.referrer_a_record,
-                share(referrer_lamports, 52)?,
+                share_with_cap(referrer_lamports, 520_000_000)?,
             )?;
 
             let b_performance = referrer_profit_add(
                 accounts.referrer_b_record,
-                share(referrer_lamports, 26)?,
+                share_with_cap(referrer_lamports, 260_000_000)?,
             )?;
             
             let c_performance = referrer_profit_add(
                 accounts.referrer_c_record,
-                share(referrer_lamports, 13)?
+                share_with_cap(referrer_lamports, 130_000_000)?
             )?;
 
             // check b frist 
@@ -149,19 +149,19 @@ pub fn promotion_inspect(
             msg!("referrer B is vault, means A is highest level");
             referrer_profit_add(
                 accounts.referrer_a_record,
-                share(referrer_lamports, 52)?
+                share_with_cap(referrer_lamports, 520_000_000)?
             )?;
         }
         3 => {
             msg!("referrer C is vault, only check wheather A is going to up level");
             let a_performance = referrer_profit_add(
                 accounts.referrer_a_record,
-                share(referrer_lamports, 52)?,
+                share_with_cap(referrer_lamports, 520_000_000)?,
             )?;
 
             let b_performance = referrer_profit_add(
                 accounts.referrer_b_record,
-                share(referrer_lamports, 26)?,
+                share_with_cap(referrer_lamports, 260_000_000)?,
             )?;
 
             if a_performance > b_performance {

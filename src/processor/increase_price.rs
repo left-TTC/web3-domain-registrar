@@ -21,8 +21,8 @@ use solana_program::{
 
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{constants::{return_vault_key}, state::{NameStateRecordHeader, ReferrerRecordHeader, get_name_state_key, get_referrer_record_key}, utils::{get_hashed_name, get_now_time, if_referrer_valid, share}};
-use web3_domain_name_service::utils::get_seeds_and_key;
+use crate::{central_state, constants::return_vault_key, state::{NameStateRecordHeader, ReferrerRecordHeader, get_name_state_key, get_referrer_record_key}, utils::{get_hashed_name, get_now_time, if_referrer_valid, math, share_with_cap}};
+use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
@@ -38,25 +38,35 @@ pub struct Params {
 pub struct Accounts<'a, T> {
     /// The root domain account       
     pub root_domain: &'a T,
+
     /// The domain auction state account
     #[cons(writable)]
     pub domain_state_account: &'a T,
+
     /// The system program account
     pub system_program: &'a T,
+
     /// The buyer account         
     #[cons(writable, signer)]
     pub fee_payer: &'a T,
+
     // it's not necessary to confirm the referrer
     /// last bidder
     #[cons(writable)]
     pub last_bidder: &'a T,
+
     /// the vault
     #[cons(writable)]
     pub vault: &'a T,
+
     /// usr's referrer record
     /// we must check it, otherwise, some users may not have a referer in the end.
     #[cons(writable)]
     pub referrer_record_account: &'a T,
+
+    /// domain account
+    pub domain_name_account: &'a T,
+
     /// referrer's referrer record account
     pub superior_referrer_record: Option<&'a T>,
 }
@@ -74,6 +84,7 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             last_bidder: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
             referrer_record_account: next_account_info(accounts_iter)?,
+            domain_name_account: next_account_info(accounts_iter)?,
             superior_referrer_record: next_account_info(accounts_iter).ok(),
         })
     }
@@ -127,7 +138,9 @@ pub fn process_increase_price<'a, 'b: 'a>(
 
     let name_state_data = 
         NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
-    if params.my_price_sol < share(name_state_data.highest_price, 105)? {
+    msg!("unpack state ok");
+
+    if params.my_price_sol < share_with_cap(name_state_data.highest_price, 1_050_000_000)? {
         msg!("At least 5% markup");
         return Err(ProgramError::InvalidArgument);
     }
@@ -147,10 +160,10 @@ pub fn process_increase_price<'a, 'b: 'a>(
     check_account_key(referrer_record_account, &referrer_record)?;
     msg!("payer's referrer record account ok");
 
+    let rent = Rent::get()?;
     if accounts.referrer_record_account.data_is_empty() {
         msg!("new user, should init the referrer account");
 
-        let rent = Rent::get()?;
         let referrer_record_lamports = rent.minimum_balance(ReferrerRecordHeader::LEN);
 
         if params.referrer_key != vault_key {
@@ -221,19 +234,38 @@ pub fn process_increase_price<'a, 'b: 'a>(
         msg!("referrer ok");
     }
 
-    //transfer the increased part to vault
-    invoke(&system_instruction::transfer(
-        accounts.fee_payer.key, &vault_key, params.my_price_sol), 
-        &[
-            accounts.fee_payer.clone(),
-            accounts.vault.clone(),
-            accounts.system_program.clone(),
-        ]
+    let add = math::sub(params.my_price_sol, name_state_data.highest_price)?;
+    
+    invoke(
+        &system_instruction::transfer(
+            accounts.fee_payer.key, &vault_key, add), 
+            &[
+                accounts.fee_payer.clone(),
+                accounts.vault.clone(),
+                accounts.system_program.clone(),
+            ]
     )?;
+    msg!("transfer to vault add: {:?} sol", add);
+
+    let mut back = name_state_data.highest_price;
+    let account_data = NameRecordHeader::unpack_from_slice(&accounts.domain_name_account.data.borrow())?;
+
+    if account_data.owner == central_state::KEY {
+        back = math::add(back, rent.minimum_balance(NameRecordHeader::LEN))?;
+        back = math::add(back, rent.minimum_balance(NameRecordHeader::LEN + params.name.len() + 4))?;
+    }
 
     // transfer back the deposit
-    **accounts.vault.try_borrow_mut_lamports()? -= name_state_data.highest_price;
-    **accounts.last_bidder.try_borrow_mut_lamports()? += name_state_data.highest_price;
+    invoke(
+        &system_instruction::transfer(
+            accounts.fee_payer.key, accounts.last_bidder.key, back), 
+            &[
+                accounts.fee_payer.clone(),
+                accounts.last_bidder.clone(),
+                accounts.system_program.clone(),
+            ]
+    )?;
+    msg!("transfer all to last_bidder: {:?} sol", back);
 
     let new_record = NameStateRecordHeader::new(
         accounts.fee_payer.key, 

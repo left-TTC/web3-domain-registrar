@@ -10,12 +10,10 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo}, clock::Clock, entrypoint::ProgramResult, msg, program::{invoke, invoke_signed}, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, rent::Rent, sysvar::Sysvar
 };
-use web3_domain_name_service::{utils::get_seeds_and_key};
+use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::{return_vault_key}, 
-    state::{NameStateRecordHeader, ReferrerRecordHeader, get_referrer_record_key}, 
-    utils::{get_hashed_name, get_now_time, if_referrer_valid, math}
+use crate::{central_state, constants::return_vault_key, cpi::Cpi, state::{NameStateRecordHeader, ReferrerRecordHeader, get_referrer_record_key}, utils::{get_hashed_name, get_now_time, if_referrer_valid, math}
 };
 
 
@@ -37,7 +35,12 @@ pub struct Accounts<'a, T> {
     pub root_domain: &'a T,
 
     /// The name account
+    #[cons(writable)]
     pub domain_name_account: &'a T,
+
+    /// The reverse look up account   
+    #[cons(writable)]
+    pub reverse_lookup: &'a T,
 
     /// The domain auction state account
     #[cons(writable)]
@@ -51,7 +54,6 @@ pub struct Accounts<'a, T> {
 
     /// The buyer account     
     #[cons(writable, signer)]
-
     pub fee_payer: &'a T,
 
     #[cons(writable)]
@@ -60,6 +62,13 @@ pub struct Accounts<'a, T> {
     /// vault
     #[cons(writable)]
     pub vault: &'a T,
+
+    /// last owner -- could be default
+    #[cons(writable)]
+    pub last_owner: &'a T,
+
+    /// rent sysvar
+    pub rent_sysvar: &'a T,
 
     /// referrer's referrer record account
     pub superior_referrer_record: Option<&'a T>,
@@ -74,12 +83,15 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             naming_service_program: next_account_info(accounts_iter)?,
             root_domain: next_account_info(accounts_iter)?,
             domain_name_account: next_account_info(accounts_iter)?,
+            reverse_lookup: next_account_info(accounts_iter)?,
             domain_state_account: next_account_info(accounts_iter)?,
             system_program: next_account_info(accounts_iter)?,
             central_state: next_account_info(accounts_iter)?,
             fee_payer: next_account_info(accounts_iter)?,
             referrer_record_account: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
+            last_owner: next_account_info(accounts_iter)?,
+            rent_sysvar: next_account_info(accounts_iter)?,
             superior_referrer_record: next_account_info(accounts_iter).ok(),
         })
     }
@@ -122,6 +134,11 @@ pub fn process_start_name<'a, 'b: 'a>(
 
     let accounts = Accounts::parse(accounts)?;
     accounts.check()?;
+
+    if params.price_sol < 10_000_000{
+        msg!("should larger than 100000000");
+        return Err(ProgramError::InvalidArgument);
+    }
     
     if params.name != params.name.trim().to_lowercase() {
         msg!("Domain names must be lower case and have no space");
@@ -132,11 +149,6 @@ pub fn process_start_name<'a, 'b: 'a>(
         return Err(ProgramError::InvalidArgument);
     }
     msg!("name: {}.{}", params.name, params.root_name);
-
-    if params.price_sol <= 10_000_000{
-        msg!("should be large than 100000000");
-        return Err(ProgramError::InvalidArgument);
-    }
 
     let rent = Rent::get()?;
 
@@ -232,14 +244,25 @@ pub fn process_start_name<'a, 'b: 'a>(
     check_account_key(accounts.root_domain, &root_account_key)?;
     msg!("root account ok");
 
+    let hashed_name = get_hashed_name(&params.name);
     let (name_account_key, _) = get_seeds_and_key(
         accounts.naming_service_program.key, 
-        get_hashed_name(&params.name), 
+        hashed_name.clone(), 
         None, 
         Some(accounts.root_domain.key)
     );
     check_account_key(accounts.domain_name_account, &name_account_key)?;
     msg!("name account ok");
+
+    let hashed_reverse_lookup = get_hashed_name(&name_account_key.to_string());
+    let (reverse_lookup_account_key, _) = get_seeds_and_key(
+        accounts.naming_service_program.key,
+        hashed_reverse_lookup.clone(),
+        Some(&central_state::KEY),
+        None,
+    );
+    check_account_key(accounts.reverse_lookup, &reverse_lookup_account_key)?;
+    msg!("reverse account key ok");
 
     let name_state_account = accounts.domain_state_account;
     let (name_state_key, name_state_seeds) = get_seeds_and_key(
@@ -271,6 +294,7 @@ pub fn process_start_name<'a, 'b: 'a>(
             accounts.system_program.clone(),
         ],
     )?;
+    
     invoke_signed(
         &system_instruction::allocate(
             &name_state_key, 
@@ -279,32 +303,100 @@ pub fn process_start_name<'a, 'b: 'a>(
         &[name_state_account.clone(), accounts.system_program.clone()], 
         &[&name_state_seeds.chunks(32).collect::<Vec<&[u8]>>()],
     )?;
+
     invoke_signed(
         &system_instruction::assign(&name_state_key, &crate::ID),
         &[name_state_account.clone(), accounts.system_program.clone()],
         &[&name_state_seeds.chunks(32).collect::<Vec<&[u8]>>()],
     )?;
 
-    let first_name_state_record = NameStateRecordHeader::new(
+    let name_state_record = NameStateRecordHeader::new(
         accounts.fee_payer.key, 
         Clock::get()?.unix_timestamp, 
         params.price_sol,
         &params.root_name,
         &params.name,
     );
-    first_name_state_record.pack_into_slice(& mut name_state_account.data.borrow_mut());
-    msg!("write name state ok: {}.{}", params.root_name, params.name);
+    name_state_record.pack_into_slice(& mut name_state_account.data.borrow_mut());
+    msg!("write name state ok: {}.{}", params.name, params.root_name);
 
-    invoke(
-        &system_instruction::transfer(
-            accounts.fee_payer.key, &vault_key, math::sub(params.price_sol, name_state_lamports)?), 
-            &[
-                accounts.fee_payer.clone(),
-                accounts.vault.clone(),
-                accounts.system_program.clone(),
-            ]
-    )?;
-    msg!("transfer all to vault: {:?} sol", math::sub(params.price_sol, name_state_lamports)?);
+    if !accounts.domain_name_account.data_is_empty(){
+        msg!("domain exsist");
+        let domain_record = NameRecordHeader::unpack_from_slice(&accounts.domain_name_account.data.borrow())?;
+        check_account_key(accounts.last_owner, &domain_record.owner)?;
+
+        if domain_record.custom_price != params.price_sol {
+            msg!("should be same as owner's custom price, custom: {}, you: {}", domain_record.custom_price, params.price_sol);
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        // directly transfer to vault, when the domain has settled, add profit to owner's profit
+        invoke(
+            &system_instruction::transfer(
+                accounts.fee_payer.key, accounts.vault.key, math::sub(params.price_sol, name_state_lamports)?), 
+                &[
+                    accounts.fee_payer.clone(),
+                    accounts.vault.clone(),
+                    accounts.system_program.clone(),
+                ]
+        )?;
+        msg!("transfer to vault: {:?} sol", math::sub(params.price_sol, name_state_lamports)?);
+        
+        let central_state_signer_seeds: &[&[u8]] = &[&crate::ID.to_bytes(), &[central_state::NONCE]];
+        Cpi::change_preview(
+            accounts.naming_service_program, 
+            accounts.system_program, 
+            accounts.domain_name_account, 
+            accounts.root_domain, 
+            accounts.central_state, 
+            central_state_signer_seeds, 
+            *accounts.fee_payer.key,
+        )?;
+    }else {
+
+        invoke(
+            &system_instruction::transfer(
+                accounts.fee_payer.key, &vault_key, math::sub(params.price_sol, name_state_lamports)?), 
+                &[
+                    accounts.fee_payer.clone(),
+                    accounts.vault.clone(),
+                    accounts.system_program.clone(),
+                ]
+        )?;
+        msg!("transfer all to vault: {:?} sol", math::sub(params.price_sol, name_state_lamports)?);
+
+        let central_state_signer_seeds: &[&[u8]] = &[&crate::ID.to_bytes(), &[central_state::NONCE]];
+        Cpi::create_name_account(
+            accounts.naming_service_program, 
+            accounts.system_program, 
+            accounts.domain_name_account, 
+            accounts.fee_payer, 
+            accounts.central_state,
+            accounts.root_domain, 
+            accounts.central_state,
+            accounts.fee_payer,
+            hashed_name,
+            rent.minimum_balance(NameRecordHeader::LEN as usize),
+            central_state_signer_seeds,
+            None,
+        )?;
+
+        if accounts.reverse_lookup.data_len() == 0 {
+            Cpi::create_reverse_lookup_account(
+                accounts.naming_service_program, 
+                accounts.system_program, 
+                accounts.reverse_lookup, 
+                accounts.fee_payer, 
+                params.name, 
+                hashed_reverse_lookup, 
+                accounts.central_state, 
+                accounts.rent_sysvar, 
+                central_state_signer_seeds, 
+                None, 
+                None
+            )?;
+        }
+    }
 
     Ok(())
 }

@@ -10,12 +10,12 @@ use web3_utils::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo}, sysvar, entrypoint::ProgramResult, msg, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey
+    account_info::{next_account_info, AccountInfo}, entrypoint::ProgramResult, msg, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey
 };
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 
 
-use crate::{central_state, state::{NameStateRecordHeader, get_name_state_key, vault::VaultRecord}, utils::{can_settle, get_hashed_name, promotion_inspect::settle_qualifications_verify}};
+use crate::{central_state, constants::return_vault_key, state::{NameStateRecordHeader, get_name_state_key, vault::VaultRecord}, utils::{can_settle, get_hashed_name}};
 
 pub mod initialize;
 pub mod repeat;
@@ -37,9 +37,6 @@ pub struct Accounts<'a, T> {
     /// The name account
     #[cons(writable)]
     pub name: &'a T,
-    /// The reverse look up account   
-    #[cons(writable)]
-    pub reverse_lookup: &'a T,
     /// The domain auction state account
     #[cons(writable)]
     pub domain_state_account: &'a T,
@@ -50,8 +47,6 @@ pub struct Accounts<'a, T> {
     /// The buyer account         
     #[cons(writable, signer)]
     pub fee_payer: &'a T,
-    /// rent sysvar
-    pub rent_sysvar: &'a T,
     /// name account owner -- The initialized domain name can be arbitrary
     /// Domain names auctioned more than twice must be the same as in the records
     #[cons(writable)]
@@ -95,12 +90,10 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
             naming_service_program: next_account_info(accounts_iter)?,
             root_domain: next_account_info(accounts_iter)?,
             name: next_account_info(accounts_iter)?,
-            reverse_lookup: next_account_info(accounts_iter)?,
             domain_state_account: next_account_info(accounts_iter)?,
             system_program: next_account_info(accounts_iter)?,
             central_state: next_account_info(accounts_iter)?,
             fee_payer: next_account_info(accounts_iter)?,
-            rent_sysvar: next_account_info(accounts_iter)?,
             origin_name_account_owner: next_account_info(accounts_iter)?,
             origin_name_owner_record: next_account_info(accounts_iter)?,
             vault: next_account_info(accounts_iter)?,
@@ -121,9 +114,9 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         msg!("nameservice id ok");
         check_account_key(self.system_program, &solana_program::system_program::ID)?;
         msg!("system_program id ok");
-        check_account_key(self.rent_sysvar, &sysvar::rent::ID)?;
 
         check_account_owner(self.root_domain, &web3_domain_name_service::ID)?;
+        check_account_owner(self.name, &web3_domain_name_service::ID)?;
         check_account_owner(self.domain_state_account, &crate::ID)?;
 
         check_signer(self.fee_payer)?;
@@ -154,6 +147,10 @@ pub fn process_finalize_name<'a, 'b: 'a>(
     check_account_key(name_state_account, &name_state_key)?;
     msg!("name state key ok");
 
+    let vault = accounts.vault;
+    let (vault_key, _) = return_vault_key();
+    check_account_key(vault, &vault_key)?;
+
     {    
         let name_state_data = 
             NameStateRecordHeader::unpack_from_slice(&name_state_account.data.borrow())?;
@@ -164,8 +161,8 @@ pub fn process_finalize_name<'a, 'b: 'a>(
             return Err(ProgramError::InvalidArgument);
         }
         
-        settle_qualifications_verify(&accounts, &name_state_data.highest_bidder)?;
-        msg!("settle man right");
+        // settle_qualifications_verify(&accounts, &name_state_data.highest_bidder)?;
+        msg!("permissionless settle");
 
         let domain_name_account = accounts.name;
         let (name_account_key, _) = get_seeds_and_key(
@@ -176,46 +173,30 @@ pub fn process_finalize_name<'a, 'b: 'a>(
         );
         check_account_key(domain_name_account, &name_account_key)?;
         msg!("name account key ok");
-
-        let hashed_reverse_lookup = get_hashed_name(&name_account_key.to_string());
-        let (reverse_lookup_account_key, _) = get_seeds_and_key(
-            accounts.naming_service_program.key,
-            hashed_reverse_lookup.clone(),
-            Some(&central_state::KEY),
-            None,
-        );
-        check_account_key(accounts.reverse_lookup, &reverse_lookup_account_key)?;
-        msg!("reverse account key ok");
     
         let name_record = 
-            NameRecordHeader::unpack_from_slice(&domain_name_account.data.borrow());
+            NameRecordHeader::unpack_from_slice(&domain_name_account.data.borrow())?;
 
-        match name_record {
-            // buy from others -- means deposit ratio is 5%
-            Ok(record_data) =>{
-                self::repeat::repeat_settle(
-                    &accounts, 
-                    params, 
-                    record_data, 
-                    &name_state_data, 
-                )?;
-            }
-            Err(_) => {
-                self::initialize::initialize_settle(
-                    &accounts, 
-                    params, 
-                    &name_state_data, 
-                    hased_name, 
-                    hashed_reverse_lookup
-                )?;
-            }
+        if name_record.owner == central_state::KEY {
+            msg!("frist create");
+            initialize::initialize_settle(
+                &accounts, 
+                params, 
+                &name_state_data, 
+            )?;
+        }else {
+            repeat::repeat_settle(
+                &accounts, 
+                params, 
+                name_record, 
+                &name_state_data, 
+            )?;
         }
 
-        // destory the name state account
         let lamports = **accounts.domain_state_account.lamports.borrow();
-        **accounts.vault.try_borrow_mut_lamports()? += lamports;
         **accounts.domain_state_account.try_borrow_mut_lamports()? -= lamports;
-
+        **accounts.vault.try_borrow_mut_lamports()? += lamports;
+        
         let mut data = accounts.domain_state_account.try_borrow_mut_data()?;
             for byte in data.iter_mut() {
                 *byte = 0;
@@ -223,8 +204,14 @@ pub fn process_finalize_name<'a, 'b: 'a>(
         accounts.domain_state_account.assign(&solana_program::system_program::ID);
 
         let mut vault_record = 
-            VaultRecord::unpack_from_slice(&accounts.vault.data.borrow_mut())?;
+            VaultRecord::unpack_from_slice(&accounts.vault.data.borrow())?;
         vault_record.update_top_domain(name_account_key, name_state_data.highest_price);
+        vault_record.domain_count = vault_record.domain_count.checked_add(1)
+            .ok_or(ProgramError::InvalidArgument)?;
+        
+        // Write the updated vault record back to the account
+        vault_record.pack_into_slice(&mut accounts.vault.data.borrow_mut());
+        msg!("vault record updated ok");
     }
 
     Ok(())

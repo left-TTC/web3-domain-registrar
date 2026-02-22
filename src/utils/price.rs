@@ -11,15 +11,22 @@ pub const CREATE_ROOT_TARGET: u64 = 500000000000;
 pub const CREATE_ROOT_TARGET: u64 = 200_000_000;
 
 
-pub fn share(total: u64, percent: u64) -> Result<u64, ProgramError> {
-    if percent > 100 {
+const RATE_DENOMINATOR: u128 = 1_000_000_000; // 1e9 精度
+const MAX_RATE: u128 = 2 * RATE_DENOMINATOR; // 200%
+
+pub fn share_with_cap(total: u64, rate: u64) -> Result<u64, ProgramError> {
+    let rate = rate as u128;
+
+    if rate > MAX_RATE {
         return Err(ProgramError::InvalidArgument);
     }
 
-    total
-        .checked_mul(percent)
-        .and_then(|v| v.checked_div(100))
-        .ok_or(ProgramError::InvalidArgument)
+    let result = (total as u128)
+        .checked_mul(rate)
+        .and_then(|v| v.checked_div(RATE_DENOMINATOR))
+        .ok_or(ProgramError::InvalidArgument)?;
+
+    Ok(result as u64)
 }
 
 pub mod math {

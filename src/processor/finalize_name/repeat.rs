@@ -1,11 +1,10 @@
-
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, msg,  program_error::ProgramError
 };
 use web3_domain_name_service::state::NameRecordHeader;
 use web3_utils::check::check_account_key;
 use solana_program::program_pack::Pack;
-use crate::{central_state, constants::return_vault_key, cpi::Cpi, state::{NameStateRecordHeader, get_referrer_record_key, ReferrerRecordHeader}, utils::{share, transfer_by_chain::transfer_by_referrer_chain}};
+use crate::{central_state, cpi::Cpi, state::{NameStateRecordHeader, get_referrer_record_key, ReferrerRecordHeader}, utils::{transfer_by_chain::transfer_by_referrer_chain, share_with_cap}};
 
 
 // Here we need to consider calls to the same address using different names.
@@ -18,15 +17,12 @@ pub fn repeat_settle(
 
     check_account_key(accounts.origin_name_account_owner, &name_account_data.owner)?;
 
-    let vault = accounts.vault;
-    let (vault_key, _) = return_vault_key();
-    check_account_key(vault, &vault_key)?;
-
     let domain_price = name_state_data.highest_price;
     msg!("transaction price: {:?}", domain_price);
 
+    // 5%
     transfer_by_referrer_chain(
-        &accounts, share(domain_price, 5)?
+        &accounts, share_with_cap(domain_price, 50_000_000)?
     )?;
     msg!("add referrer profit and performance and up level ok");
 
@@ -38,13 +34,10 @@ pub fn repeat_settle(
    
     let mut data_origin_ref = origin_owner_referrer_record.try_borrow_mut_data()?;
     let mut origin_owner_record_data = 
-        ReferrerRecordHeader::unpack_from_slice(
-            &data_origin_ref
-        )?;
+        ReferrerRecordHeader::unpack_from_slice( &data_origin_ref)?;
 
-    let get_lamports = share(domain_price, 95)?;
-    
-    // the domain origin owner's account will only add profit
+    // the domain origin owner's account will only add profit(95%)
+    let get_lamports = share_with_cap(domain_price, 950_000_000)?;
     origin_owner_record_data.profit =
         origin_owner_record_data.profit
         .checked_add(get_lamports)
@@ -59,7 +52,7 @@ pub fn repeat_settle(
         accounts.central_state, 
         accounts.name, 
         accounts.root_domain, 
-        accounts.fee_payer.key, 
+        accounts.new_domain_owner.key, 
         central_state_signer_seeds,
         params.custom_price
     )?;
