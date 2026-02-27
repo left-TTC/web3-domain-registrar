@@ -1,20 +1,6 @@
 # Web3-domain-registrar
 
 
-## Deploy
-```bash
-solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.json target/sbpf-solana-solana/release/web3_domain_registrar.so  --use-rpc
-```
-
-## Bulid
-```bash
-cargo build-sbf
-```
-
-## Check
-```bash
-solana-keygen pubkey target/deploy/web3_domain_registrar-keypair.json
-```
 
 ## Account Structure
 > About get_seeds_and_keys
@@ -60,5 +46,22 @@ When create a domain auction state, the sponsor needs to pay the rent exemption,
 > We will distribute 3% of the profits to the sponor for his distribution in every auction
 - As long as the transaction is initiated, there will be profit regardless of whether it is successful or not
 - No maximium limitation
+
+
+
+## Deploy
+```bash
+solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.json target/sbpf-solana-solana/release/web3_domain_registrar.so  --use-rpc
+```
+
+## Bulid
+```bash
+cargo build-sbf
+```
+
+## Check
+```bash
+solana-keygen pubkey target/deploy/web3_domain_registrar-keypair.json
+```
 
  

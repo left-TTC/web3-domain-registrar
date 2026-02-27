@@ -95,9 +95,8 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
         msg!("system_program id ok");
 
         check_account_owner(self.root_domain, &web3_domain_name_service::ID)?;
-        check_account_owner(self.domain_state_account, &crate::ID)
-            .map_err(|_| crate::Error::AlreadyRegistered)?;
-
+        check_account_owner(self.domain_state_account, &crate::ID)?;
+        
         check_signer(self.fee_payer).unwrap();
         msg!("fee_payer signature ok");
 

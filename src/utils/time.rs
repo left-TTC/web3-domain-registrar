@@ -7,7 +7,7 @@ use crate::state::ReferrerRecordHeader;
 #[cfg(not(feature = "devnet"))]
 pub const TIME_LIMIT: i64 = 2592000; // 30 days in seconds
 #[cfg(feature = "devnet")]
-pub const TIME_LIMIT: i64 = 120; // 2 minutes in seconds
+pub const TIME_LIMIT: i64 = 300; // 2 minutes in seconds
 
 pub fn get_now_time() -> Result<i64, ProgramError> {
     let clock = Clock::get()?;

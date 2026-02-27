@@ -30,7 +30,6 @@ use crate::state::RootStateRecordHeader;
 #[derive(BorshDeserialize, BorshSerialize, BorshSize)]
 pub struct Params {
     pub root_name: String,
-    pub extra_add: u64,
 }
 
 #[derive(InstructionsAccount)]
@@ -115,7 +114,6 @@ pub fn process_initialize_root(
     check_account_key(accounts.vault, &vault)?;
     msg!("check vault ok");
 
-    let lamports = math::add(ADVANCED_STORAGE, params.extra_add)?;
     // if the root state account doesn't created
     if root_state_account.data_is_empty() {
 
@@ -149,7 +147,7 @@ pub fn process_initialize_root(
 
         invoke(
         &system_instruction::transfer(
-            accounts.initiator.key, accounts.vault.key, math::sub(lamports, root_state_lamports)?), 
+            accounts.initiator.key, accounts.vault.key, math::sub(ADVANCED_STORAGE, root_state_lamports)?), 
             &[
                 accounts.initiator.clone(),
                 accounts.vault.clone(),
@@ -163,9 +161,6 @@ pub fn process_initialize_root(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
     msg!("create root state account ok");
-
-    
-
 
     let init_state: RootStateRecordHeader = RootStateRecordHeader::
         new(

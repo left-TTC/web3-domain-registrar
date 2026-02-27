@@ -2,7 +2,6 @@ use solana_program::entrypoint::ProgramResult;
 use solana_program::account_info::AccountInfo;
 use solana_program::msg;
 use solana_program::program_error::ProgramError;
-use solana_program::pubkey::Pubkey;
 use solana_program::program_pack::Pack;
 
 
@@ -10,35 +9,35 @@ use crate::processor::finalize_name::Accounts;
 use crate::state::{ReferrerRecordHeader};
 use crate::utils::share_with_cap;
 
-pub fn settle_qualifications_verify(
-    accounts: &Accounts<'_, AccountInfo<'_>>,
-    highest_bidder: &Pubkey
-) -> ProgramResult {
+// pub fn settle_qualifications_verify(
+//     accounts: &Accounts<'_, AccountInfo<'_>>,
+//     highest_bidder: &Pubkey
+// ) -> ProgramResult {
 
-    if accounts.fee_payer.key == highest_bidder {
-        msg!("is the bidder");
-        return Ok(())
-    }
-    if accounts.referrer_a.key == accounts.fee_payer.key {
-        msg!("is the referrer a");
-        return Ok(())
-    }
-    if let Some(refferr_b) = accounts.referrer_b {
-        if refferr_b.key == accounts.fee_payer.key {
-            msg!("is the referrer b");
-            return Ok(())
-        }
-    }
-    if let Some(refferr_c) = accounts.referrer_c {
-        if refferr_c.key == accounts.fee_payer.key {
-            msg!("is the referrer c");
-            return Ok(())
-        }
-    }
+//     if accounts.fee_payer.key == highest_bidder {
+//         msg!("is the bidder");
+//         return Ok(())
+//     }
+//     if accounts.referrer_a.key == accounts.fee_payer.key {
+//         msg!("is the referrer a");
+//         return Ok(())
+//     }
+//     if let Some(refferr_b) = accounts.referrer_b {
+//         if refferr_b.key == accounts.fee_payer.key {
+//             msg!("is the referrer b");
+//             return Ok(())
+//         }
+//     }
+//     if let Some(refferr_c) = accounts.referrer_c {
+//         if refferr_c.key == accounts.fee_payer.key {
+//             msg!("is the referrer c");
+//             return Ok(())
+//         }
+//     }
 
-    msg!("you have not qualification ro confirm the transaction");
-    Err(ProgramError::InvalidArgument)
-}
+//     msg!("you have not qualification ro confirm the transaction");
+//     Err(ProgramError::InvalidArgument)
+// }
 
 fn referrer_profit_add(
     referrer_record: Option<&AccountInfo>,

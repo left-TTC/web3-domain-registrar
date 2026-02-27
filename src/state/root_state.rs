@@ -9,6 +9,7 @@ use solana_program::{
 
 #[derive(Clone,Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct RootStateRecordHeader {
+    pub root_flag: u8,
     pub initiator: Pubkey,
     pub amount: u64,
     pub name: [u8; 16],
@@ -24,20 +25,16 @@ impl RootStateRecordHeader {
         buf[..len].copy_from_slice(&raw[..len]);
 
         Self {
+            root_flag: 1,
             initiator,
             amount,
             name: buf,
         }
     }
-
-    // pub fn get_name(&self) -> String {
-    //     let end = self.name.iter().position(|&c| c == 0).unwrap_or(self.name.len());
-    //     String::from_utf8_lossy(&self.name[..end]).to_string()
-    // }
 }
 
 impl Pack for RootStateRecordHeader {
-    const LEN: usize = 56;
+    const LEN: usize = 57;
 
     fn pack_into_slice(&self, dst: &mut [u8]) {
         let mut slice = dst;

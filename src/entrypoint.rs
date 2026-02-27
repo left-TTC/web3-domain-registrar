@@ -1,18 +1,12 @@
 
-use num_traits::FromPrimitive;
-//solana create  --version 1.18.11
 use solana_program::{
-    account_info::AccountInfo, decode_error::DecodeError, entrypoint::ProgramResult, msg,
-    program_error::PrintProgramError, pubkey::Pubkey,
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, pubkey::Pubkey,
 };
-//custom create
-use crate::{error::Error, processor::Processor};
 //Conditional compilation
 #[cfg(not(feature = "no-entrypoint"))]
 use solana_program::entrypoint;
+use web3_domain_name_service::processor::Processor;
 #[cfg(not(feature = "no-entrypoint"))]
-
-
 entrypoint!(process_instruction);
 
 
@@ -22,29 +16,7 @@ pub fn process_instruction(
     instruction_data: &[u8],
 ) -> ProgramResult {
     msg!("Entrypoint");
-    if let Err(error) = Processor::process_instruction(program_id, accounts, instruction_data) {
-        error.print::<Error>();
-        return Err(error);
-    }
+    Processor::process_instruction(program_id, accounts, instruction_data)?;
     Ok(())
 }
 
-impl PrintProgramError for Error {
-    fn print<E>(&self)
-    where
-        E: 'static + std::error::Error + DecodeError<E> + PrintProgramError + FromPrimitive,
-    {
-        match self {
-            Error::Overflow => {
-                msg!("Error: Numerical overflow")
-            }
-            Error::WrongCollection => msg!("Error: Wrong collection"),
-            Error::AlreadyRegistered => {
-                msg!("Error: The domain name is already registered")
-            }
-            Error::DeprecatedInstruction => {
-                msg!("Error: The instruction is deprecated")
-            }
-        }
-    }
-}

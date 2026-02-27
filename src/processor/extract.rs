@@ -1,8 +1,5 @@
 use web3_utils::{
-    check::{check_signer},
-    BorshSize, InstructionsAccount,
-    borsh_size::BorshSize,
-    accounts::InstructionsAccount,
+    BorshSize, InstructionsAccount, accounts::InstructionsAccount, borsh_size::BorshSize, check::{check_account_key, check_account_owner, check_signer}
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -10,7 +7,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo}, entrypoint::ProgramResult, msg, program_error::ProgramError, pubkey::Pubkey
 };
 
-use crate::{state::ReferrerRecordHeader};
+use crate::{constants::return_vault_key, state::{ReferrerRecordHeader, get_referrer_record_key}, utils::{math, share_with_cap}};
 
 #[derive(BorshDeserialize, BorshSerialize, BorshSize, Debug)]
 /// The required parameters for the `create` instruction
@@ -44,6 +41,8 @@ impl<'a, 'b: 'a> Accounts<'a, AccountInfo<'b>> {
 
     pub fn check(&self) -> Result<(), ProgramError> {
 
+        check_account_owner(self.user_referrer_record, &crate::ID)?;
+
         check_signer(self.user).unwrap();
         msg!("user signature ok");
 
@@ -60,20 +59,33 @@ pub fn process_extract<'a, 'b: 'a>(
     let accounts = Accounts::parse(accounts)?;
     accounts.check()?;
 
+    msg!("use withdraw {} lamports", params.extraction);
+
+    let (referrer_key, _) = get_referrer_record_key(accounts.user.key);
+    check_account_key(accounts.user_referrer_record, &referrer_key)?;
+    msg!("referrer key ok");
+
+    let (vault_key, _) = return_vault_key();
+    check_account_key(accounts.vault, &vault_key)?;
+    msg!("vault key ok");
+
     let mut data_ref = accounts.user_referrer_record.try_borrow_mut_data()?;
     let mut record_data = 
         ReferrerRecordHeader::unpack_from_slice(&data_ref)?;
 
-    if record_data.profit - params.extraction <= 10000 {
-        msg!("limitation");
+    // devnet - 0.01SOL Mainnet - 0.1SOL 
+    if math::sub(record_data.profit, params.extraction)? <= 10_000_000 {
+        msg!("should leave 0.01SOL or 0.1SOL");
         return Err(ProgramError::InvalidArgument);
     }
 
-    **accounts.vault.try_borrow_mut_lamports()? -= params.extraction;
-    **accounts.user.try_borrow_mut_lamports()? += params.extraction;
+    let real_ex = share_with_cap(params.extraction, 990_000_000)?;
+
+    **accounts.vault.try_borrow_mut_lamports()? -= real_ex;
+    **accounts.user.try_borrow_mut_lamports()? += real_ex;
     msg!("transfer ok");
 
-    record_data.profit -= params.extraction;
+    record_data.profit = math::sub(record_data.profit, params.extraction)?;
     record_data.pack_into_slice(&mut data_ref); 
 
     Ok(())
