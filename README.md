@@ -1,6 +1,11 @@
 # Web3-domain-registrar
 
-
+## Overview
+The main contract of Web3 Name Service
+### Program Id
+```
+FebjdrGRLHocUXADP5QYPFfEkbYtRHMyobAL6wwkQe2d
+```
 
 ## Account Structure
 > About get_seeds_and_keys
@@ -16,37 +21,24 @@
 |WEB3_REGISTRAR  |       Register_Central        |       Register_Central        |   Vault |
 |WEB3_REGISTRAR  |       WEB3_REGISTRAR        |       WEB3_REGISTRAR        |   referrer Record |
 
-> About account structure
-
-|Account Type|Param 1|Param 2|Param 3|Param 4|Size|
-|---|---|---|---|---|---|
-|Name(root)|Parent Name(None)|owner(centarl registrar)|class(None)|custom price(meaningless)|104|
-|Name(reverse)|Parent Name(None)|owner(centarl registrar)|class(centarl registrar)|custom price(meaningless)|104 + name.len|
-|Name(common)|Parent Name(Root)|owner(usr)|class(None)|custom price(resale)|104|
-|Name(reverse)|Parent Name(None)|owner(centarl registrar)|class(centarl registrar)|custom price(meaningless)|104 + name.len|
 
 ## Profit Sharing Ideas
-
 ### 1. Refferer
 Every usr will set a refereer 
-> We plan to distribute 90% of the profits to the referrers in the next three levels (only create).
-#### Specific profit sharing ratio
-> In this case, we assume that the buyer's name is A, and A's referrer is B, B's referrer is C, C's is D
+> We plan to distribute 91% of the profits to the referrers in the next three levels.
 
-##### Initial domain name creation
+In this case, we assume that the buyer's name is A, and A's referrer is B, B's referrer is C, C's is D
+
+#### Initial domain name creation
 |Name|Expenditure|Income|Responsibility|
 |---|---|---|---|
-|A|ausume that X(now is $1.99)|None|pay for domain name|
-|B|None|x * 40%|get referral fees|
-|C|None|x * 30%|get referral fees|
-|D|None|x * 20%|get referral fees|
+|A|ausume that X|None|pay for domain name and finally own the domain|
+|B|None|x * 52%|get referral fees|
+|C|None|x * 26%|get referral fees|
+|D|None|x * 13%|get referral fees|
 
-### 2. rent exemption
-When create a domain auction state, the sponsor needs to pay the rent exemption, but when the domain is twice auctioned, rent exemption has beed paid by the sponor, it's unfair
-> We will distribute 3% of the profits to the sponor for his distribution in every auction
-- As long as the transaction is initiated, there will be profit regardless of whether it is successful or not
-- No maximium limitation
-
+#### Secondary sale of domain name
+95% of the sale amount belongs to the seller, and the remaining 5% will sitributed by the new owner's recommender according to the proportion
 
 
 ## Deploy
@@ -54,12 +46,10 @@ When create a domain auction state, the sponsor needs to pay the rent exemption,
 solana program deploy --program-id target/deploy/web3_domain_registrar-keypair.json target/sbpf-solana-solana/release/web3_domain_registrar.so  --use-rpc
 ```
 
-## Bulid
 ```bash
 cargo build-sbf
 ```
 
-## Check
 ```bash
 solana-keygen pubkey target/deploy/web3_domain_registrar-keypair.json
 ```
