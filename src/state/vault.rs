@@ -18,8 +18,8 @@ pub struct ValuableDomain {
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub struct VaultRecord {
-    /// Dividend proportion
-    pub a_proportion: u8,
+    /// usr count
+    pub usr_count: u32,
     /// Total number of created domains
     pub domain_count: u32,
     /// Current number of valid high-value domains
@@ -33,7 +33,7 @@ impl Sealed for VaultRecord {}
 impl VaultRecord {
     pub fn new() -> Self {
         Self {
-            a_proportion: 52,
+            usr_count: 0,
             domain_count: 0,
             top_len: 0,
             top_domains: core::array::from_fn(|_| ValuableDomain {
@@ -68,8 +68,8 @@ impl VaultRecord {
 }
 
 impl Pack for VaultRecord {
-    // u8 (1) + u32 (4) + u8 (1) + 6 * (32 + 8) = 1 + 4 + 1 + 240 = 246
-    const LEN: usize = 1 + 4 + 1 + (6 * (32 + 8));
+    // u32 (4) + u32 (4) + u8 (1) + 6 * (32 + 8) = 4 + 4 + 1 + 240 = 249
+    const LEN: usize = 4 + 4 + 1 + (6 * (32 + 8));
 
     fn pack_into_slice(&self, dst: &mut [u8]) {
         let mut slice = dst;

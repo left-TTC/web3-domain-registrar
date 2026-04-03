@@ -29,5 +29,8 @@ pub enum ProgramInstruction {
 
     /// Withdraw protocol/admin funds
     WithdrawAdmin,
+
+    /// Init usr record account
+    InitUsr,
 }
 

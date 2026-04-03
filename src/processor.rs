@@ -16,6 +16,7 @@ pub mod finalize_name;
 pub mod start_project;
 pub mod extract_admin;
 pub mod extract;
+pub mod init_usr;
 
 pub struct Processor {}
 
@@ -83,6 +84,12 @@ impl Processor {
                     .map_err(|_| ProgramError::InvalidArgument)?;
                 extract_admin::process_extract_admin(program_id, accounts, params)?;
             }   
+            ProgramInstruction::InitUsr => {
+                msg!("Instruction: Init usr");
+                let params = init_usr::Params::try_from_slice(instruction_data)
+                    .map_err(|_| ProgramError::InvalidArgument)?;
+                init_usr::init_usr(program_id, accounts, params)?;
+            }
         }
 
         Ok(())

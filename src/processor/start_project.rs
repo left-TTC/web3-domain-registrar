@@ -93,7 +93,7 @@ pub fn process_start_project(
 ) -> ProgramResult {
     let accounts = Accounts::parse(accounts)?;
 
-    if params.start_domain != "kilo" {
+    if params.start_domain != "rust" {
         msg!("start domain should be kilo");
         return Err(ProgramError::InvalidArgument);
     }

@@ -13,7 +13,7 @@ use solana_program::{
 use web3_domain_name_service::{state::NameRecordHeader, utils::get_seeds_and_key};
 use solana_system_interface::instruction as system_instruction;
 
-use crate::{central_state, constants::return_vault_key, cpi::Cpi, state::{NameStateRecordHeader, ReferrerRecordHeader, get_referrer_record_key}, utils::{get_hashed_name, get_now_time, if_referrer_valid, math}
+use crate::{central_state, constants::return_vault_key, cpi::Cpi, processor::init_usr, state::{NameStateRecordHeader, ReferrerRecordHeader, get_referrer_record_key}, utils::{get_hashed_name, math}
 };
 
 
@@ -159,72 +159,29 @@ pub fn process_start_name<'a, 'b: 'a>(
 
     // the referreer record account
     let referrer_record_account = accounts.referrer_record_account;
-    let (referrer_record, referrer_seeds) = 
+    let (referrer_record, _) = 
         get_referrer_record_key(&accounts.fee_payer.key);
     check_account_key(referrer_record_account, &referrer_record)?;
     msg!("payer's referrer record account ok");
 
     if referrer_record_account.data_len() == 0 {
         msg!("payer's referrer record account need to be intialized");
-        let referrer_record_lamports = rent.minimum_balance(ReferrerRecordHeader::LEN);
-
-        if params.referrer_key != vault_key {
-            msg!("payer uses other's invitation code");
-            if let Some(superior_referrer) = accounts.superior_referrer_record {
-                let (superior_referrer_key, _) = get_referrer_record_key(&params.referrer_key);
-                check_account_key(superior_referrer, &superior_referrer_key)?;
-
-                msg!("refferr's referrer record account ok");
-                
-                let referrer_referrer_state =  
-                    ReferrerRecordHeader::unpack_from_slice(&superior_referrer.data.borrow())?;
-
-                if !if_referrer_valid(referrer_referrer_state)?{
-                    return Err(ProgramError::InvalidArgument);
-                }
-            } else {
-                msg!("you should provide your referrer's referrer record"); 
-                return Err(ProgramError::InvalidArgument);
-            }
+        
+        let re_param = init_usr::Params {
+            referrer_key: params.referrer_key
+        };
+        let mut account_infos = vec![
+            accounts.fee_payer.clone(),
+            accounts.system_program.clone(),
+            accounts.referrer_record_account.clone(),
+        ];
+        if let Some(acc) = accounts.superior_referrer_record {
+            account_infos.push(acc.clone());
         }
-
-        invoke(
-        &system_instruction::transfer(
-            accounts.fee_payer.key, &referrer_record, referrer_record_lamports), 
-            &[
-                accounts.fee_payer.clone(),
-                accounts.referrer_record_account.clone(),
-                accounts.system_program.clone(),
-            ],
+        init_usr::init_usr(_program_id, 
+            &account_infos, 
+            re_param
         )?;
-        msg!("referrer record: {:?}", referrer_record_lamports);
-
-        invoke_signed(
-            &system_instruction::allocate(
-                &referrer_record, 
-                ReferrerRecordHeader::LEN as u64
-            ), 
-            &[accounts.referrer_record_account.clone(), accounts.system_program.clone()], 
-            &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
-        )?;
-
-        invoke_signed(
-            &system_instruction::assign(&referrer_record, &crate::ID),
-            &[accounts.referrer_record_account.clone(), accounts.system_program.clone()],
-            &[&referrer_seeds.chunks(32).collect::<Vec<&[u8]>>()],
-        )?;
-
-        msg!("create payer's referrer record account");
-
-        let record = ReferrerRecordHeader::new(
-            params.referrer_key,
-            get_now_time()?,
-        );
-
-        let mut data = accounts.referrer_record_account.try_borrow_mut_data()?;
-        record.pack_into_slice(&mut data);
-
-        msg!("write in referrer record account");
 
     }else {
         let referrer_data = 
