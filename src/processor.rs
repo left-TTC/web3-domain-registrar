@@ -26,8 +26,8 @@ impl Processor {
         accounts: &[AccountInfo],
         instruction_data: &[u8],
     ) -> ProgramResult {
-        msg!("Beginning processing");
         msg!("instruction: {:?}", instruction_data);
+        msg!("confirm update 0");
 
         let instruction = FromPrimitive::from_u8(instruction_data[0])
             .ok_or(ProgramError::InvalidInstructionData)?;

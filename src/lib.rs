@@ -13,8 +13,7 @@ pub mod cpi;
 declare_id_with_central_state!("jCebN34bUfdeUYJT13J1yG16XWQpt5PDx6Mse9GUqhR");
 
 #[cfg(feature = "devnet")]
-declare_id_with_central_state!("3y18vVMeEkZsDobFqtVQgHTCEmVsmbA3k3xrS8N53D9w");
-
+declare_id_with_central_state!("GMy1ikF3VFf4ffGq2tzNP3R2dc2mQij3fjVZVH7cFxZN");
 
 #[cfg(feature = "devnet")]
 pub mod constants {
